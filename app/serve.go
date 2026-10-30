@@ -14,6 +14,7 @@ import (
   "strconv"
   "strings"
   "syscall"
+  "time"
 
   "github.com/jackc/pgx/v5/pgxpool"
   "github.com/labstack/echo/v5"
@@ -30,21 +31,32 @@ func serveCmd() *cli.Command {
     Flags: []cli.Flag{
       &cli.StringFlag{Name: "api-host", Value: "0.0.0.0", Sources: cli.EnvVars("API_HOST")},
       &cli.IntFlag{Name: "api-port", Value: 1381, Sources: cli.EnvVars("API_PORT")},
+      &cli.IntFlag{Name: "access-token-expiry-mins", Value: 5, Sources: cli.EnvVars("ACCESS_TOKEN_EXPIRY_MINS")},
+      &cli.IntFlag{Name: "refresh-token-expiry-days", Value: 7, Sources: cli.EnvVars("REFRESH_TOKEN_EXPIRY_DAYS")},
     },
     Action: serve,
   }
 }
 
 func serve(ctx context.Context, cmd *cli.Command) error {
-  var pool *pgxpool.Pool
-  if dbURL := os.Getenv("DATABASE_URL"); dbURL != "" {
-    p, err := pgxpool.New(ctx, dbURL)
-    if err != nil {
-      return fmt.Errorf("invalid DATABASE_URL: %w", err)
-    }
-    defer p.Close()
-    pool = p
+  secret := os.Getenv("JWT_SECRET")
+  if len(secret) < 32 {
+    return errors.New("JWT_SECRET must be set and at least 32 bytes long")
   }
+  accessMins, refreshDays := cmd.Int("access-token-expiry-mins"), cmd.Int("refresh-token-expiry-days")
+  if accessMins < 1 || refreshDays < 1 {
+    return errors.New("token expiries must be at least 1")
+  }
+
+  dbURL := os.Getenv("DATABASE_URL")
+  if dbURL == "" {
+    return errors.New("DATABASE_URL is not set")
+  }
+  pool, err := pgxpool.New(ctx, dbURL)
+  if err != nil {
+    return fmt.Errorf("invalid DATABASE_URL: %w", err)
+  }
+  defer pool.Close()
 
   fsys, err := clientFS()
   if err != nil {
@@ -88,6 +100,12 @@ func serve(ctx context.Context, cmd *cli.Command) error {
 
   api := e.Group("/admin/api/v1")
   api.GET("/ht", healthHandler(pool))
+  newAuthHandler(pool, authConfig{
+    secret:          []byte(secret),
+    accessTTL:       time.Duration(accessMins) * time.Minute,
+    refreshTTL:      time.Duration(refreshDays) * 24 * time.Hour,
+    strictPasswords: os.Getenv("APP_ENV") != "dev",
+  }).register(api)
 
   addr := net.JoinHostPort(cmd.String("api-host"), strconv.Itoa(cmd.Int("api-port")))
   sc := echo.StartConfig{Address: addr}

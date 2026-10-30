@@ -1,10 +1,15 @@
 <script setup lang="ts">
+import { LayoutDashboard, LogIn, LogOut } from '@lucide/vue'
+import { Button } from '@/components/ui/button'
+
+const { user, signout } = useAuth()
+
 const year = new Date().getFullYear()
 
 const links = [
-  { label: 'Rules', to: { path: '/', hash: '#rules' } },
-  { label: 'Install', to: { path: '/', hash: '#install' } },
-  { label: 'Status', to: '/health' },
+  { label: 'Rules', to: { path: '/', hash: '#rules' }, mobile: false },
+  { label: 'Install', to: { path: '/', hash: '#install' }, mobile: false },
+  { label: 'Status', to: '/health', mobile: true },
 ]
 </script>
 
@@ -23,13 +28,34 @@ const links = [
             :key="link.label"
             :to="link.to"
             class="font-mono text-[11px] tracking-widest text-muted-foreground uppercase transition-colors hover:text-foreground"
+            :class="{ 'hidden md:inline': !link.mobile }"
             active-class="text-foreground"
           >
             {{ link.label }}
           </NuxtLink>
         </nav>
 
-        <ThemeToggle />
+        <div class="flex items-center gap-1">
+          <template v-if="user">
+            <Button as-child variant="ghost" size="sm" class="font-mono text-[11px] tracking-widest uppercase">
+              <NuxtLink to="/dashboard" :aria-label="`Dashboard for ${user.username}`">
+                <LayoutDashboard />
+                <span class="hidden max-w-32 truncate sm:inline">{{ user.username }}</span>
+              </NuxtLink>
+            </Button>
+            <Button variant="ghost" size="sm" class="font-mono text-[11px] tracking-widest uppercase" aria-label="Sign out" @click="signout">
+              <LogOut />
+              <span class="hidden sm:inline">Sign out</span>
+            </Button>
+          </template>
+          <Button v-else as-child size="sm" class="font-mono text-[11px] tracking-widest uppercase">
+            <NuxtLink to="/signin">
+              <LogIn />
+              Sign in
+            </NuxtLink>
+          </Button>
+          <ThemeToggle />
+        </div>
       </div>
     </header>
 
