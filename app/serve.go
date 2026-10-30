@@ -3,6 +3,8 @@ package main
 import (
   "context"
   "errors"
+  "fmt"
+  "io/fs"
   "log"
   "net"
   "net/http"
@@ -13,6 +15,7 @@ import (
   "strings"
   "syscall"
 
+  "github.com/jackc/pgx/v5/pgxpool"
   "github.com/labstack/echo/v5"
   "github.com/labstack/echo/v5/middleware"
   "github.com/urfave/cli/v3"
@@ -33,15 +36,17 @@ func serveCmd() *cli.Command {
 }
 
 func serve(ctx context.Context, cmd *cli.Command) error {
-  if os.Getenv("APP_ENV") == "dev" {
-    nuxt, err := startNuxtDev()
+  var pool *pgxpool.Pool
+  if dbURL := os.Getenv("DATABASE_URL"); dbURL != "" {
+    p, err := pgxpool.New(ctx, dbURL)
     if err != nil {
-      return err
+      return fmt.Errorf("invalid DATABASE_URL: %w", err)
     }
-    defer stopNuxtDev(nuxt)
+    defer p.Close()
+    pool = p
   }
 
-  target, err := url.Parse(nuxtURL)
+  fsys, err := clientFS()
   if err != nil {
     return err
   }
@@ -50,19 +55,39 @@ func serve(ctx context.Context, cmd *cli.Command) error {
 
   e.Use(middleware.RequestLogger())
   e.Use(middleware.Recover())
-  e.Use(middleware.ProxyWithConfig(middleware.ProxyConfig{
-    Balancer: middleware.NewRandomBalancer([]*middleware.ProxyTarget{{URL: target}}),
-    Skipper: func(c *echo.Context) bool {
-      p := c.Request().URL.Path
-      return p == "/" || strings.HasPrefix(p, "/admin/api/")
-    },
-  }))
+
+  if fsys != nil {
+    h := echo.WrapHandler(spaHandler(fsys))
+    e.GET("/admin", h)
+    e.GET("/admin/*", h)
+  } else {
+    if os.Getenv("APP_ENV") == "dev" {
+      nuxt, err := startNuxtDev()
+      if err != nil {
+        return err
+      }
+      defer stopNuxtDev(nuxt)
+    }
+
+    target, err := url.Parse(nuxtURL)
+    if err != nil {
+      return err
+    }
+    e.Use(middleware.ProxyWithConfig(middleware.ProxyConfig{
+      Balancer: middleware.NewRandomBalancer([]*middleware.ProxyTarget{{URL: target}}),
+      Skipper: func(c *echo.Context) bool {
+        p := c.Request().URL.Path
+        return p == "/" || strings.HasPrefix(p, "/admin/api/")
+      },
+    }))
+  }
 
   e.GET("/", func(c *echo.Context) error {
     return c.JSON(http.StatusOK, map[string]string{"message": "Hello, World!"})
   })
 
-  _ = e.Group("/admin/api/v1")
+  api := e.Group("/admin/api/v1")
+  api.GET("/ht", healthHandler(pool))
 
   addr := net.JoinHostPort(cmd.String("api-host"), strconv.Itoa(cmd.Int("api-port")))
   sc := echo.StartConfig{Address: addr}
@@ -70,6 +95,20 @@ func serve(ctx context.Context, cmd *cli.Command) error {
     return err
   }
   return nil
+}
+
+// spaHandler serves the generated Nuxt site under /admin, falling back to index.html for client-side routes.
+func spaHandler(fsys fs.FS) http.Handler {
+  files := http.FileServerFS(fsys)
+  return http.StripPrefix("/admin", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+    p := strings.Trim(r.URL.Path, "/")
+    if p != "" {
+      if _, err := fs.Stat(fsys, p); err != nil {
+        r.URL.Path = "/"
+      }
+    }
+    files.ServeHTTP(w, r)
+  }))
 }
 
 func startNuxtDev() (*exec.Cmd, error) {
