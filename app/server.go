@@ -1,23 +1,34 @@
 package main
 
 import (
-  "net/http"
+  "context"
+  "errors"
+  "io/fs"
+  "log"
+  "os"
+  "os/signal"
+  "syscall"
 
-  "github.com/labstack/echo/v5"
-  "github.com/labstack/echo/v5/middleware"
+  "github.com/joho/godotenv"
+  "github.com/urfave/cli/v3"
 )
 
 func main() {
-  e := echo.New()
+  if err := godotenv.Load(); err != nil && !errors.Is(err, fs.ErrNotExist) {
+    log.Fatalf("failed to load .env: %v", err)
+  }
 
-  e.Use(middleware.RequestLogger())
-  e.Use(middleware.Recover())
+  ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+  defer stop()
 
-  e.GET("/", func(c *echo.Context) error {
-    return c.JSON(http.StatusOK, map[string]string{"message": "Hello, World!"})
-  })
+  cmd := &cli.Command{
+    Name:     "afsc",
+    Usage:    "afsc server and tooling",
+    Commands: []*cli.Command{serveCmd(), migrateCmd()},
+  }
 
-  if err := e.Start(":1323"); err != nil {
-    e.Logger.Error("failed to start server", "error", err)
+  if err := cmd.Run(ctx, os.Args); err != nil {
+    stop()
+    log.Fatal(err)
   }
 }
