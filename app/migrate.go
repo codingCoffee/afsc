@@ -27,19 +27,19 @@ func migrateCmd() *cli.Command {
         Name:      "up",
         Usage:     "apply all migrations, or up to and including [version]",
         ArgsUsage: "[version]",
-        Action:    func(ctx context.Context, cmd *cli.Command) error { return runMigrations(cmd, true) },
+        Action:    func(ctx context.Context, cmd *cli.Command) error { return migrateAction(cmd, true) },
       },
       {
         Name:      "down",
         Usage:     "revert all migrations, or down to [version] (exclusive)",
         ArgsUsage: "[version]",
-        Action:    func(ctx context.Context, cmd *cli.Command) error { return runMigrations(cmd, false) },
+        Action:    func(ctx context.Context, cmd *cli.Command) error { return migrateAction(cmd, false) },
       },
     },
   }
 }
 
-func runMigrations(cmd *cli.Command, up bool) error {
+func migrateAction(cmd *cli.Command, up bool) error {
   var target *uint
   if arg := cmd.Args().First(); arg != "" {
     v, err := strconv.ParseUint(arg, 10, 64)
@@ -49,7 +49,10 @@ func runMigrations(cmd *cli.Command, up bool) error {
     t := uint(v)
     target = &t
   }
+  return runMigrations(target, up)
+}
 
+func runMigrations(target *uint, up bool) error {
   dbURL := os.Getenv("DATABASE_URL")
   if dbURL == "" {
     return errors.New("DATABASE_URL is not set")

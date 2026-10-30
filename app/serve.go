@@ -31,6 +31,7 @@ func serveCmd() *cli.Command {
     Flags: []cli.Flag{
       &cli.StringFlag{Name: "api-host", Value: "0.0.0.0", Sources: cli.EnvVars("API_HOST")},
       &cli.IntFlag{Name: "api-port", Value: 1381, Sources: cli.EnvVars("API_PORT")},
+      &cli.BoolFlag{Name: "migrate", Usage: "run all pending migrations before serving"},
       &cli.IntFlag{Name: "access-token-expiry-mins", Value: 5, Sources: cli.EnvVars("ACCESS_TOKEN_EXPIRY_MINS")},
       &cli.IntFlag{Name: "refresh-token-expiry-days", Value: 7, Sources: cli.EnvVars("REFRESH_TOKEN_EXPIRY_DAYS")},
     },
@@ -39,6 +40,12 @@ func serveCmd() *cli.Command {
 }
 
 func serve(ctx context.Context, cmd *cli.Command) error {
+  if cmd.Bool("migrate") {
+    if err := runMigrations(nil, true); err != nil {
+      return fmt.Errorf("migrate up: %w", err)
+    }
+  }
+
   secret := os.Getenv("JWT_SECRET")
   if len(secret) < 32 {
     return errors.New("JWT_SECRET must be set and at least 32 bytes long")
