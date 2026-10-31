@@ -12,14 +12,27 @@ import (
 	"github.com/google/uuid"
 )
 
+const countRefreshTokens = `-- name: CountRefreshTokens :one
+SELECT count(*) FROM refresh_tokens
+WHERE NOT $1::bool OR (revoked_at IS NULL AND expires_at > now())
+`
+
+func (q *Queries) CountRefreshTokens(ctx context.Context, activeOnly bool) (int64, error) {
+	row := q.db.QueryRow(ctx, countRefreshTokens, activeOnly)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const createRefreshToken = `-- name: CreateRefreshToken :one
-INSERT INTO refresh_tokens (user_id, token_hash, user_agent, ip, expires_at)
-VALUES ($1, $2, $3, $4, $5)
+INSERT INTO refresh_tokens (user_id, session_id, token_hash, user_agent, ip, expires_at)
+VALUES ($1, $2, $3, $4, $5, $6)
 RETURNING id
 `
 
 type CreateRefreshTokenParams struct {
 	UserID    uuid.UUID `json:"user_id"`
+	SessionID uuid.UUID `json:"session_id"`
 	TokenHash []byte    `json:"token_hash"`
 	UserAgent string    `json:"user_agent"`
 	Ip        string    `json:"ip"`
@@ -29,6 +42,7 @@ type CreateRefreshTokenParams struct {
 func (q *Queries) CreateRefreshToken(ctx context.Context, arg CreateRefreshTokenParams) (uuid.UUID, error) {
 	row := q.db.QueryRow(ctx, createRefreshToken,
 		arg.UserID,
+		arg.SessionID,
 		arg.TokenHash,
 		arg.UserAgent,
 		arg.Ip,
@@ -39,8 +53,40 @@ func (q *Queries) CreateRefreshToken(ctx context.Context, arg CreateRefreshToken
 	return id, err
 }
 
+const deleteExpiredRefreshTokens = `-- name: DeleteExpiredRefreshTokens :execrows
+DELETE FROM refresh_tokens WHERE expires_at < now()
+`
+
+func (q *Queries) DeleteExpiredRefreshTokens(ctx context.Context) (int64, error) {
+	result, err := q.db.Exec(ctx, deleteExpiredRefreshTokens)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const getActiveSession = `-- name: GetActiveSession :one
+SELECT u.id, u.user_type
+FROM refresh_tokens rt
+JOIN users u ON u.id = rt.user_id
+WHERE rt.session_id = $1 AND rt.revoked_at IS NULL AND rt.expires_at > now()
+LIMIT 1
+`
+
+type GetActiveSessionRow struct {
+	ID       uuid.UUID `json:"id"`
+	UserType string    `json:"user_type"`
+}
+
+func (q *Queries) GetActiveSession(ctx context.Context, sessionID uuid.UUID) (GetActiveSessionRow, error) {
+	row := q.db.QueryRow(ctx, getActiveSession, sessionID)
+	var i GetActiveSessionRow
+	err := row.Scan(&i.ID, &i.UserType)
+	return i, err
+}
+
 const getRefreshTokenByHashForUpdate = `-- name: GetRefreshTokenByHashForUpdate :one
-SELECT id, user_id, token_hash, user_agent, ip, created_at, expires_at, revoked_at, replaced_by FROM refresh_tokens WHERE token_hash = $1 FOR UPDATE
+SELECT id, user_id, token_hash, user_agent, ip, created_at, expires_at, revoked_at, replaced_by, session_id FROM refresh_tokens WHERE token_hash = $1 FOR UPDATE
 `
 
 func (q *Queries) GetRefreshTokenByHashForUpdate(ctx context.Context, tokenHash []byte) (RefreshToken, error) {
@@ -56,8 +102,67 @@ func (q *Queries) GetRefreshTokenByHashForUpdate(ctx context.Context, tokenHash 
 		&i.ExpiresAt,
 		&i.RevokedAt,
 		&i.ReplacedBy,
+		&i.SessionID,
 	)
 	return i, err
+}
+
+const listRefreshTokens = `-- name: ListRefreshTokens :many
+SELECT rt.id, rt.session_id, rt.user_id, u.username, rt.user_agent, rt.ip,
+       rt.created_at, rt.expires_at, rt.revoked_at
+FROM refresh_tokens rt
+JOIN users u ON u.id = rt.user_id
+WHERE NOT $1::bool OR (rt.revoked_at IS NULL AND rt.expires_at > now())
+ORDER BY rt.created_at DESC, rt.id DESC
+LIMIT $3 OFFSET $2
+`
+
+type ListRefreshTokensParams struct {
+	ActiveOnly bool  `json:"active_only"`
+	Off        int32 `json:"off"`
+	Lim        int32 `json:"lim"`
+}
+
+type ListRefreshTokensRow struct {
+	ID        uuid.UUID  `json:"id"`
+	SessionID uuid.UUID  `json:"session_id"`
+	UserID    uuid.UUID  `json:"user_id"`
+	Username  string     `json:"username"`
+	UserAgent string     `json:"user_agent"`
+	Ip        string     `json:"ip"`
+	CreatedAt time.Time  `json:"created_at"`
+	ExpiresAt time.Time  `json:"expires_at"`
+	RevokedAt *time.Time `json:"revoked_at"`
+}
+
+func (q *Queries) ListRefreshTokens(ctx context.Context, arg ListRefreshTokensParams) ([]ListRefreshTokensRow, error) {
+	rows, err := q.db.Query(ctx, listRefreshTokens, arg.ActiveOnly, arg.Off, arg.Lim)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListRefreshTokensRow
+	for rows.Next() {
+		var i ListRefreshTokensRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.SessionID,
+			&i.UserID,
+			&i.Username,
+			&i.UserAgent,
+			&i.Ip,
+			&i.CreatedAt,
+			&i.ExpiresAt,
+			&i.RevokedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const revokeRefreshToken = `-- name: RevokeRefreshToken :exec
@@ -84,6 +189,20 @@ WHERE token_hash = $1 AND revoked_at IS NULL
 func (q *Queries) RevokeRefreshTokenByHash(ctx context.Context, tokenHash []byte) error {
 	_, err := q.db.Exec(ctx, revokeRefreshTokenByHash, tokenHash)
 	return err
+}
+
+const revokeSessionByTokenID = `-- name: RevokeSessionByTokenID :execrows
+UPDATE refresh_tokens rt SET revoked_at = now()
+WHERE rt.revoked_at IS NULL
+  AND rt.session_id = (SELECT src.session_id FROM refresh_tokens src WHERE src.id = $1)
+`
+
+func (q *Queries) RevokeSessionByTokenID(ctx context.Context, id uuid.UUID) (int64, error) {
+	result, err := q.db.Exec(ctx, revokeSessionByTokenID, id)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
 const revokeUserRefreshTokens = `-- name: RevokeUserRefreshTokens :exec

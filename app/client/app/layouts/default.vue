@@ -1,16 +1,23 @@
 <script setup lang="ts">
 import { LayoutDashboard, LogIn, LogOut } from '@lucide/vue'
+import { computed } from 'vue'
 import { Button } from '@/components/ui/button'
 
 const { user, signout } = useAuth()
 
 const year = new Date().getFullYear()
 
-const links = [
+const links = computed(() => [
   { label: 'Rules', to: { path: '/', hash: '#rules' }, mobile: false },
   { label: 'Install', to: { path: '/', hash: '#install' }, mobile: false },
   { label: 'Status', to: '/health', mobile: true },
-]
+  ...(user.value?.user_type === 'admin'
+    ? [
+        { label: 'Users', to: '/model/users', mobile: false },
+        { label: 'Tokens', to: '/model/tokens', mobile: false },
+      ]
+    : []),
+])
 </script>
 
 <template>

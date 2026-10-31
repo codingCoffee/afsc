@@ -51,6 +51,7 @@ type userResponse struct {
   FirstName string    `json:"first_name"`
   LastName  string    `json:"last_name"`
   UserType  string    `json:"user_type"`
+  CreatedAt time.Time `json:"created_at"`
 }
 
 type sessionResponse struct {
@@ -73,36 +74,64 @@ func (h *authHandler) register(g *echo.Group) {
   g.POST("/token_refresh", h.tokenRefresh)
   g.POST("/signout", h.signout)
   g.GET("/me", h.me, h.requireAuth)
+  h.registerAdmin(g)
+}
+
+type newUserRequest struct {
+  Username  string `json:"username"`
+  Email     string `json:"email"`
+  Password  string `json:"password"`
+  FirstName string `json:"first_name"`
+  LastName  string `json:"last_name"`
+  UserType  string `json:"user_type"`
+}
+
+// normalize trims/lowercases fields in place and returns the invalid field and message, if any.
+func (r *newUserRequest) normalize(strictPasswords bool) (string, string) {
+  r.Username = strings.ToLower(strings.TrimSpace(r.Username))
+  r.Email = strings.ToLower(strings.TrimSpace(r.Email))
+  r.FirstName = strings.TrimSpace(r.FirstName)
+  r.LastName = strings.TrimSpace(r.LastName)
+
+  if !usernameRe.MatchString(r.Username) {
+    return "username", "3-32 characters: a-z, 0-9, _ . -"
+  }
+  if addr, err := mail.ParseAddress(r.Email); err != nil || addr.Address != r.Email || len(r.Email) > 254 {
+    return "email", "enter a valid email address"
+  }
+  if utf8.RuneCountInString(r.FirstName) > 100 {
+    return "first_name", "must be at most 100 characters"
+  }
+  if utf8.RuneCountInString(r.LastName) > 100 {
+    return "last_name", "must be at most 100 characters"
+  }
+  if msg := validatePassword(r.Password, strictPasswords); msg != "" {
+    return "password", msg
+  }
+  return "", ""
+}
+
+func uniqueViolation(c *echo.Context, err error) (error, bool) {
+  var pgErr *pgconn.PgError
+  if !errors.As(err, &pgErr) || pgErr.Code != "23505" {
+    return nil, false
+  }
+  switch pgErr.ConstraintName {
+  case "users_username_key":
+    return fieldError(c, http.StatusConflict, "username", "username is already taken"), true
+  case "users_email_key":
+    return fieldError(c, http.StatusConflict, "email", "email is already registered"), true
+  }
+  return nil, false
 }
 
 func (h *authHandler) signup(c *echo.Context) error {
-  var req struct {
-    Username  string `json:"username"`
-    Email     string `json:"email"`
-    Password  string `json:"password"`
-    FirstName string `json:"first_name"`
-    LastName  string `json:"last_name"`
-  }
+  var req newUserRequest
   if err := decodeJSON(c, &req); err != nil {
     return jsonError(c, http.StatusBadRequest, "invalid request body")
   }
-
-  req.Username = strings.ToLower(strings.TrimSpace(req.Username))
-  req.Email = strings.ToLower(strings.TrimSpace(req.Email))
-  req.FirstName = strings.TrimSpace(req.FirstName)
-  req.LastName = strings.TrimSpace(req.LastName)
-
-  if !usernameRe.MatchString(req.Username) {
-    return fieldError(c, http.StatusBadRequest, "username", "3-32 characters: a-z, 0-9, _ . -")
-  }
-  if addr, err := mail.ParseAddress(req.Email); err != nil || addr.Address != req.Email || len(req.Email) > 254 {
-    return fieldError(c, http.StatusBadRequest, "email", "enter a valid email address")
-  }
-  if utf8.RuneCountInString(req.FirstName) > 100 || utf8.RuneCountInString(req.LastName) > 100 {
-    return jsonError(c, http.StatusBadRequest, "names must be at most 100 characters")
-  }
-  if msg := validatePassword(req.Password, h.cfg.strictPasswords); msg != "" {
-    return fieldError(c, http.StatusBadRequest, "password", msg)
+  if field, msg := req.normalize(h.cfg.strictPasswords); field != "" {
+    return fieldError(c, http.StatusBadRequest, field, msg)
   }
 
   hash, err := bcrypt.GenerateFromPassword([]byte(req.Password), bcryptCost)
@@ -129,26 +158,21 @@ func (h *authHandler) signup(c *echo.Context) error {
     LastName:     req.LastName,
   })
   if err != nil {
-    var pgErr *pgconn.PgError
-    if errors.As(err, &pgErr) && pgErr.Code == "23505" {
-      switch pgErr.ConstraintName {
-      case "users_username_key":
-        return fieldError(c, http.StatusConflict, "username", "username is already taken")
-      case "users_email_key":
-        return fieldError(c, http.StatusConflict, "email", "email is already registered")
-      }
+    if resp, ok := uniqueViolation(c, err); ok {
+      return resp
     }
     return err
   }
 
-  _, refresh, err := h.issueRefresh(c, q, user.ID)
+  sessionID := uuid.New()
+  _, refresh, err := h.issueRefresh(c, q, user.ID, sessionID)
   if err != nil {
     return err
   }
   if err := tx.Commit(ctx); err != nil {
     return err
   }
-  return h.respondSession(c, http.StatusCreated, user, refresh)
+  return h.respondSession(c, http.StatusCreated, user, refresh, sessionID)
 }
 
 func (h *authHandler) signin(c *echo.Context) error {
@@ -177,11 +201,12 @@ func (h *authHandler) signin(c *echo.Context) error {
     return jsonError(c, http.StatusUnauthorized, "invalid credentials")
   }
 
-  _, refresh, err := h.issueRefresh(c, h.q, user.ID)
+  sessionID := uuid.New()
+  _, refresh, err := h.issueRefresh(c, h.q, user.ID, sessionID)
   if err != nil {
     return err
   }
-  return h.respondSession(c, http.StatusOK, user, refresh)
+  return h.respondSession(c, http.StatusOK, user, refresh, sessionID)
 }
 
 func (h *authHandler) tokenRefresh(c *echo.Context) error {
@@ -208,6 +233,11 @@ func (h *authHandler) tokenRefresh(c *echo.Context) error {
   }
 
   if old.RevokedAt != nil {
+    clearSessionCookies(c)
+    // only a token that was already rotated means replay; signout/blacklist revocations are just dead tokens
+    if !old.ReplacedBy.Valid {
+      return jsonError(c, http.StatusUnauthorized, "session revoked")
+    }
     if err := q.RevokeUserRefreshTokens(ctx, old.UserID); err != nil {
       return err
     }
@@ -215,7 +245,6 @@ func (h *authHandler) tokenRefresh(c *echo.Context) error {
       return err
     }
     log.Printf("refresh token reuse detected for user %s, revoked all sessions", old.UserID)
-    clearSessionCookies(c)
     return jsonError(c, http.StatusUnauthorized, "refresh token reused, all sessions revoked")
   }
   if time.Now().After(old.ExpiresAt) {
@@ -227,7 +256,7 @@ func (h *authHandler) tokenRefresh(c *echo.Context) error {
   if err != nil {
     return err
   }
-  newID, refresh, err := h.issueRefresh(c, q, user.ID)
+  newID, refresh, err := h.issueRefresh(c, q, user.ID, old.SessionID)
   if err != nil {
     return err
   }
@@ -240,7 +269,7 @@ func (h *authHandler) tokenRefresh(c *echo.Context) error {
   if err := tx.Commit(ctx); err != nil {
     return err
   }
-  return h.respondSession(c, http.StatusOK, user, refresh)
+  return h.respondSession(c, http.StatusOK, user, refresh, old.SessionID)
 }
 
 func (h *authHandler) signout(c *echo.Context) error {
@@ -265,13 +294,14 @@ func (h *authHandler) me(c *echo.Context) error {
   return c.JSON(http.StatusOK, toUserResponse(user))
 }
 
-func (h *authHandler) issueRefresh(c *echo.Context, q *db.Queries, userID uuid.UUID) (uuid.UUID, string, error) {
+func (h *authHandler) issueRefresh(c *echo.Context, q *db.Queries, userID, sessionID uuid.UUID) (uuid.UUID, string, error) {
   raw, hash, err := newRefreshToken()
   if err != nil {
     return uuid.Nil, "", err
   }
   id, err := q.CreateRefreshToken(c.Request().Context(), db.CreateRefreshTokenParams{
     UserID:    userID,
+    SessionID: sessionID,
     TokenHash: hash,
     UserAgent: c.Request().UserAgent(),
     Ip:        c.RealIP(),
@@ -280,8 +310,8 @@ func (h *authHandler) issueRefresh(c *echo.Context, q *db.Queries, userID uuid.U
   return id, raw, err
 }
 
-func (h *authHandler) respondSession(c *echo.Context, status int, user db.User, refresh string) error {
-  access, err := h.signAccess(user.ID, user.UserType)
+func (h *authHandler) respondSession(c *echo.Context, status int, user db.User, refresh string, sessionID uuid.UUID) error {
+  access, err := h.signAccess(user.ID, user.UserType, sessionID)
   if err != nil {
     return err
   }
@@ -301,6 +331,7 @@ func toUserResponse(u db.User) userResponse {
     FirstName: u.FirstName,
     LastName:  u.LastName,
     UserType:  u.UserType,
+    CreatedAt: u.CreatedAt,
   }
 }
 

@@ -5,6 +5,14 @@ export interface User {
   first_name: string
   last_name: string
   user_type: 'admin' | 'user'
+  created_at: string
+}
+
+export interface Page<T> {
+  items: T[]
+  page: number
+  page_size: number
+  total: number
 }
 
 interface Session {

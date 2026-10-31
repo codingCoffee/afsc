@@ -20,6 +20,7 @@ type RefreshToken struct {
 	ExpiresAt  time.Time     `json:"expires_at"`
 	RevokedAt  *time.Time    `json:"revoked_at"`
 	ReplacedBy uuid.NullUUID `json:"replaced_by"`
+	SessionID  uuid.UUID     `json:"session_id"`
 }
 
 type User struct {
