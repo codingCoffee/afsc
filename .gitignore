@@ -1,3 +1,6 @@
 postgres-data/
 .postgres.env
 app/.env
+.rustfs.env
+rustfs-data/
+rustfs-logs/

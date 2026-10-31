@@ -45,13 +45,14 @@ type authHandler struct {
 }
 
 type userResponse struct {
-  ID        uuid.UUID `json:"id"`
-  Username  string    `json:"username"`
-  Email     string    `json:"email"`
-  FirstName string    `json:"first_name"`
-  LastName  string    `json:"last_name"`
-  UserType  string    `json:"user_type"`
-  CreatedAt time.Time `json:"created_at"`
+  ID          uuid.UUID `json:"id"`
+  Username    string    `json:"username"`
+  Email       string    `json:"email"`
+  FirstName   string    `json:"first_name"`
+  LastName    string    `json:"last_name"`
+  DisplayName string    `json:"display_name"`
+  Role        string    `json:"role"`
+  CreatedAt   time.Time `json:"created_at"`
 }
 
 type sessionResponse struct {
@@ -83,7 +84,7 @@ type newUserRequest struct {
   Password  string `json:"password"`
   FirstName string `json:"first_name"`
   LastName  string `json:"last_name"`
-  UserType  string `json:"user_type"`
+  Role      string `json:"role"`
 }
 
 // normalize trims/lowercases fields in place and returns the invalid field and message, if any.
@@ -150,10 +151,11 @@ func (h *authHandler) signup(c *echo.Context) error {
   if err := q.LockUserSignup(ctx); err != nil {
     return err
   }
+  hashStr := string(hash)
   user, err := q.CreateUser(ctx, db.CreateUserParams{
     Username:     req.Username,
     Email:        req.Email,
-    PasswordHash: string(hash),
+    PasswordHash: &hashStr,
     FirstName:    req.FirstName,
     LastName:     req.LastName,
   })
@@ -197,7 +199,12 @@ func (h *authHandler) signin(c *echo.Context) error {
   if err != nil {
     return err
   }
-  if bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(req.Password)) != nil {
+  // imported users have no password until they accept an invite
+  if user.PasswordHash == nil {
+    _ = bcrypt.CompareHashAndPassword(dummyHash, []byte(req.Password))
+    return jsonError(c, http.StatusUnauthorized, "invalid credentials")
+  }
+  if bcrypt.CompareHashAndPassword([]byte(*user.PasswordHash), []byte(req.Password)) != nil {
     return jsonError(c, http.StatusUnauthorized, "invalid credentials")
   }
 
@@ -311,7 +318,7 @@ func (h *authHandler) issueRefresh(c *echo.Context, q *db.Queries, userID, sessi
 }
 
 func (h *authHandler) respondSession(c *echo.Context, status int, user db.User, refresh string, sessionID uuid.UUID) error {
-  access, err := h.signAccess(user.ID, user.UserType, sessionID)
+  access, err := h.signAccess(user.ID, user.Role, sessionID)
   if err != nil {
     return err
   }
@@ -325,13 +332,14 @@ func (h *authHandler) respondSession(c *echo.Context, status int, user db.User, 
 
 func toUserResponse(u db.User) userResponse {
   return userResponse{
-    ID:        u.ID,
-    Username:  u.Username,
-    Email:     u.Email,
-    FirstName: u.FirstName,
-    LastName:  u.LastName,
-    UserType:  u.UserType,
-    CreatedAt: u.CreatedAt,
+    ID:          u.ID,
+    Username:    u.Username,
+    Email:       u.Email,
+    FirstName:   u.FirstName,
+    LastName:    u.LastName,
+    DisplayName: u.DisplayName,
+    Role:        u.Role,
+    CreatedAt:   u.CreatedAt,
   }
 }
 

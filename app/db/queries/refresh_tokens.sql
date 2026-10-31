@@ -20,7 +20,7 @@ UPDATE refresh_tokens SET revoked_at = now()
 WHERE user_id = @user_id AND revoked_at IS NULL;
 
 -- name: GetActiveSession :one
-SELECT u.id, u.user_type
+SELECT u.id, u.role
 FROM refresh_tokens rt
 JOIN users u ON u.id = rt.user_id
 WHERE rt.session_id = @session_id AND rt.revoked_at IS NULL AND rt.expires_at > now()

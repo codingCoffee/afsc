@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { User } from '@/composables/useAuth'
+import type { Role, User } from '@/composables/useAuth'
 import { Plus } from '@lucide/vue'
 import { reactive, ref, watch } from 'vue'
 import { Button } from '@/components/ui/button'
@@ -24,7 +24,8 @@ const open = ref(false)
 const loading = ref(false)
 const error = ref('')
 const fieldErrors = ref<Record<string, string>>({})
-const blank = () => ({ username: '', email: '', password: '', first_name: '', last_name: '', user_type: 'user' as 'user' | 'admin' })
+const blank = () => ({ username: '', email: '', password: '', first_name: '', last_name: '', role: 'contributor' as Role })
+const roles: Role[] = ['contributor', 'author', 'editor', 'admin']
 const form = reactive(blank())
 
 watch(open, (value) => {
@@ -106,22 +107,22 @@ const labelClass = 'font-mono text-[11px] tracking-widest text-muted-foreground 
         </div>
 
         <div class="grid gap-2">
-          <span :class="labelClass">Type</span>
+          <span :class="labelClass">Role</span>
           <ToggleGroup
-            v-model="form.user_type"
+            v-model="form.role"
             type="single"
             variant="outline"
-            class="w-full"
-            aria-label="User type"
-            @update:model-value="(v) => { if (!v) form.user_type = 'user' }"
+            class="grid w-full grid-cols-2 sm:grid-cols-4"
+            aria-label="Role"
+            @update:model-value="(v) => { if (!v) form.role = 'contributor' }"
           >
-            <ToggleGroupItem value="user" class="flex-1 font-mono text-xs tracking-widest uppercase">
-              User
-            </ToggleGroupItem>
-            <ToggleGroupItem value="admin" class="flex-1 font-mono text-xs tracking-widest uppercase">
-              Admin
+            <ToggleGroupItem v-for="r in roles" :key="r" :value="r" class="font-mono text-xs tracking-widest uppercase">
+              {{ r }}
             </ToggleGroupItem>
           </ToggleGroup>
+          <p v-if="fieldErrors.role" class="font-mono text-[11px] text-destructive">
+            {{ fieldErrors.role }}
+          </p>
         </div>
 
         <p v-if="error" role="alert" class="font-mono text-xs text-destructive">

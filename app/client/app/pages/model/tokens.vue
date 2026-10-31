@@ -27,7 +27,7 @@ useHead({ title: 'Tokens · AFSC' })
 const PAGE_SIZE = 20
 
 const { user: me, authFetch, signout } = useAuth()
-const isAdmin = computed(() => me.value?.user_type === 'admin')
+const isAdmin = computed(() => me.value?.role === 'admin')
 
 const filter = ref<'active' | 'all'>('active')
 const page = ref(1)

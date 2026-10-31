@@ -14,6 +14,8 @@ import (
   "afsc/internal/db"
 )
 
+var validRoles = map[string]bool{"admin": true, "editor": true, "author": true, "contributor": true}
+
 const (
   defaultPageSize = 20
   maxPageSize     = 100
@@ -93,24 +95,25 @@ func (h *authHandler) createUser(c *echo.Context) error {
   if field, msg := req.normalize(h.cfg.strictPasswords); field != "" {
     return fieldError(c, http.StatusBadRequest, field, msg)
   }
-  if req.UserType == "" {
-    req.UserType = "user"
+  if req.Role == "" {
+    req.Role = "contributor"
   }
-  if req.UserType != "admin" && req.UserType != "user" {
-    return fieldError(c, http.StatusBadRequest, "user_type", "must be admin or user")
+  if !validRoles[req.Role] {
+    return fieldError(c, http.StatusBadRequest, "role", "must be admin, editor, author or contributor")
   }
 
   hash, err := bcrypt.GenerateFromPassword([]byte(req.Password), bcryptCost)
   if err != nil {
     return err
   }
-  user, err := h.q.CreateUserWithType(c.Request().Context(), db.CreateUserWithTypeParams{
+  hashStr := string(hash)
+  user, err := h.q.CreateUserWithRole(c.Request().Context(), db.CreateUserWithRoleParams{
     Username:     req.Username,
     Email:        req.Email,
-    PasswordHash: string(hash),
+    PasswordHash: &hashStr,
     FirstName:    req.FirstName,
     LastName:     req.LastName,
-    UserType:     req.UserType,
+    Role:         req.Role,
   })
   if err != nil {
     if resp, ok := uniqueViolation(c, err); ok {
@@ -149,7 +152,7 @@ func (h *authHandler) deleteUser(c *echo.Context) error {
   if err != nil {
     return err
   }
-  if target.UserType == "admin" {
+  if target.Role == "admin" {
     admins, err := q.CountAdmins(ctx)
     if err != nil {
       return err

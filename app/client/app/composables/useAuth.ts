@@ -1,10 +1,13 @@
+export type Role = 'admin' | 'editor' | 'author' | 'contributor'
+
 export interface User {
   id: string
   username: string
   email: string
   first_name: string
   last_name: string
-  user_type: 'admin' | 'user'
+  display_name: string
+  role: Role
   created_at: string
 }
 

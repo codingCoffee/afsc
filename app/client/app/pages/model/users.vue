@@ -12,7 +12,7 @@ useHead({ title: 'Users · AFSC' })
 const PAGE_SIZE = 20
 
 const { user: me, authFetch } = useAuth()
-const isAdmin = computed(() => me.value?.user_type === 'admin')
+const isAdmin = computed(() => me.value?.role === 'admin')
 
 const page = ref(1)
 const data = ref<Page<User> | null>(null)
@@ -134,8 +134,8 @@ watch(isAdmin, (admin) => {
                 {{ u.email }}
               </TableCell>
               <TableCell>
-                <Badge :variant="u.user_type === 'admin' ? 'default' : 'outline'" class="rounded-sm font-mono text-[10px] tracking-widest uppercase">
-                  {{ u.user_type }}
+                <Badge :variant="u.role === 'admin' ? 'default' : 'outline'" class="rounded-sm font-mono text-[10px] tracking-widest uppercase">
+                  {{ u.role }}
                 </Badge>
               </TableCell>
               <TableCell class="hidden font-mono text-xs text-muted-foreground lg:table-cell">

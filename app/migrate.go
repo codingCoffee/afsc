@@ -2,6 +2,7 @@ package main
 
 import (
   "context"
+  "embed"
   "errors"
   "fmt"
   "log"
@@ -12,11 +13,12 @@ import (
   "github.com/golang-migrate/migrate/v4"
   _ "github.com/golang-migrate/migrate/v4/database/pgx/v5"
   "github.com/golang-migrate/migrate/v4/source"
-  "github.com/golang-migrate/migrate/v4/source/file"
+  "github.com/golang-migrate/migrate/v4/source/iofs"
   "github.com/urfave/cli/v3"
 )
 
-const migrationsURL = "file://db/migrations"
+//go:embed db/migrations/*.sql
+var migrationsFS embed.FS
 
 func migrateCmd() *cli.Command {
   return &cli.Command{
@@ -53,9 +55,9 @@ func migrateAction(cmd *cli.Command, up bool) error {
 }
 
 func runMigrations(target *uint, up bool) error {
-  dbURL := os.Getenv("DATABASE_URL")
+  dbURL := os.Getenv("AFSC_DATABASE_URL")
   if dbURL == "" {
-    return errors.New("DATABASE_URL is not set")
+    return errors.New("AFSC_DATABASE_URL is not set")
   }
   for _, prefix := range []string{"postgres://", "postgresql://"} {
     if strings.HasPrefix(dbURL, prefix) {
@@ -64,11 +66,11 @@ func runMigrations(target *uint, up bool) error {
     }
   }
 
-  src, err := (&file.File{}).Open(migrationsURL)
+  src, err := iofs.New(migrationsFS, "db/migrations")
   if err != nil {
     return fmt.Errorf("failed to open migrations: %w", err)
   }
-  m, err := migrate.NewWithSourceInstance("file", src, dbURL)
+  m, err := migrate.NewWithSourceInstance("iofs", src, dbURL)
   if err != nil {
     return fmt.Errorf("failed to connect to database: %w", err)
   }

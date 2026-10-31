@@ -10,10 +10,37 @@ services:
     ports:
       - 1381:1381
     depends_on:
+      rustfs:
+        condition: service_healthy
       postgres:
         condition: service_healthy
     env_file:
       - app/.env
+
+  rustfs:
+    image: rustfs/rustfs:1.0.4
+    security_opt:
+      - "no-new-privileges:true"
+    env_file:
+      - .rustfs.env
+    ports:
+      - 9000:9000
+      - 9001:9001
+    volumes:
+      - ./rustfs-data:/data
+      - ./rustfs-logs:/logs
+    restart: unless-stopped
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "sh", "-c",
+          "curl -f http://127.0.0.1:9000/health"
+        ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
 
   postgres:
     image: postgres:18.6-alpine3.24

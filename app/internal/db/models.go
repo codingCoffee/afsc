@@ -5,10 +5,199 @@
 package db
 
 import (
+	"net/netip"
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgtype"
 )
+
+type Author struct {
+	ID            int64         `json:"id"`
+	Slug          string        `json:"slug"`
+	DisplayName   string        `json:"display_name"`
+	Bio           string        `json:"bio"`
+	Website       string        `json:"website"`
+	Social        []byte        `json:"social"`
+	AvatarMediaID pgtype.Int8   `json:"avatar_media_id"`
+	UserID        uuid.NullUUID `json:"user_id"`
+	LegacyKey     *string       `json:"legacy_key"`
+	CreatedAt     time.Time     `json:"created_at"`
+	UpdatedAt     time.Time     `json:"updated_at"`
+}
+
+type Comment struct {
+	ID          int64         `json:"id"`
+	PostID      int64         `json:"post_id"`
+	ParentID    pgtype.Int8   `json:"parent_id"`
+	AuthorName  string        `json:"author_name"`
+	AuthorEmail string        `json:"author_email"`
+	AuthorUrl   string        `json:"author_url"`
+	UserID      uuid.NullUUID `json:"user_id"`
+	Ip          *netip.Addr   `json:"ip"`
+	UserAgent   *string       `json:"user_agent"`
+	Body        string        `json:"body"`
+	Status      string        `json:"status"`
+	SpamScore   pgtype.Float4 `json:"spam_score"`
+	SpamReasons []byte        `json:"spam_reasons"`
+	LegacyKey   *string       `json:"legacy_key"`
+	CreatedAt   time.Time     `json:"created_at"`
+	UpdatedAt   time.Time     `json:"updated_at"`
+}
+
+type LegacyRecord struct {
+	LegacyKey  string    `json:"legacy_key"`
+	Kind       string    `json:"kind"`
+	Source     []byte    `json:"source"`
+	ImportedAt time.Time `json:"imported_at"`
+}
+
+type MediaLegacyPath struct {
+	Path      string      `json:"path"`
+	MediaID   int64       `json:"media_id"`
+	Variant   string      `json:"variant"`
+	Width     pgtype.Int4 `json:"width"`
+	Height    pgtype.Int4 `json:"height"`
+	Crop      bool        `json:"crop"`
+	Hits      int64       `json:"hits"`
+	LastHitAt *time.Time  `json:"last_hit_at"`
+	CreatedAt time.Time   `json:"created_at"`
+	UpdatedAt time.Time   `json:"updated_at"`
+}
+
+type Medium struct {
+	ID              int64         `json:"id"`
+	StorageKey      string        `json:"storage_key"`
+	Filename        string        `json:"filename"`
+	Mime            string        `json:"mime"`
+	Bytes           int64         `json:"bytes"`
+	Sha256          []byte        `json:"sha256"`
+	Width           pgtype.Int4   `json:"width"`
+	Height          pgtype.Int4   `json:"height"`
+	DurationSeconds pgtype.Int4   `json:"duration_seconds"`
+	Title           string        `json:"title"`
+	Alt             string        `json:"alt"`
+	Caption         string        `json:"caption"`
+	Description     string        `json:"description"`
+	FocalX          pgtype.Float4 `json:"focal_x"`
+	FocalY          pgtype.Float4 `json:"focal_y"`
+	UploadedBy      uuid.NullUUID `json:"uploaded_by"`
+	LibraryVisible  bool          `json:"library_visible"`
+	LegacyKey       *string       `json:"legacy_key"`
+	CreatedAt       time.Time     `json:"created_at"`
+	UpdatedAt       time.Time     `json:"updated_at"`
+}
+
+type Menu struct {
+	ID        int64     `json:"id"`
+	Slug      string    `json:"slug"`
+	Name      string    `json:"name"`
+	LegacyKey *string   `json:"legacy_key"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
+type MenuItem struct {
+	ID         int64       `json:"id"`
+	MenuID     int64       `json:"menu_id"`
+	ParentID   pgtype.Int8 `json:"parent_id"`
+	Position   int32       `json:"position"`
+	Label      string      `json:"label"`
+	Kind       string      `json:"kind"`
+	TargetID   pgtype.Int8 `json:"target_id"`
+	Url        *string     `json:"url"`
+	NewTab     bool        `json:"new_tab"`
+	CssClasses []string    `json:"css_classes"`
+	LegacyKey  *string     `json:"legacy_key"`
+	CreatedAt  time.Time   `json:"created_at"`
+	UpdatedAt  time.Time   `json:"updated_at"`
+}
+
+type MenuLocation struct {
+	Location  string    `json:"location"`
+	MenuID    int64     `json:"menu_id"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
+type NotFoundLog struct {
+	Path         string    `json:"path"`
+	Hits         int64     `json:"hits"`
+	FirstSeen    time.Time `json:"first_seen"`
+	LastSeen     time.Time `json:"last_seen"`
+	LastReferrer string    `json:"last_referrer"`
+}
+
+type Post struct {
+	ID              int64       `json:"id"`
+	Type            string      `json:"type"`
+	Status          string      `json:"status"`
+	Slug            string      `json:"slug"`
+	ParentID        pgtype.Int8 `json:"parent_id"`
+	Title           string      `json:"title"`
+	Excerpt         string      `json:"excerpt"`
+	Content         []byte      `json:"content"`
+	ContentHtml     string      `json:"content_html"`
+	ContentText     string      `json:"content_text"`
+	Template        *string     `json:"template"`
+	FeaturedMediaID pgtype.Int8 `json:"featured_media_id"`
+	PublishedAt     *time.Time  `json:"published_at"`
+	Sticky          bool        `json:"sticky"`
+	MenuOrder       int32       `json:"menu_order"`
+	CommentStatus   string      `json:"comment_status"`
+	FeedGuid        *string     `json:"feed_guid"`
+	Version         int32       `json:"version"`
+	Search          interface{} `json:"search"`
+	LegacyKey       *string     `json:"legacy_key"`
+	CreatedAt       time.Time   `json:"created_at"`
+	UpdatedAt       time.Time   `json:"updated_at"`
+}
+
+type PostAuthor struct {
+	PostID   int64 `json:"post_id"`
+	AuthorID int64 `json:"author_id"`
+	Position int32 `json:"position"`
+}
+
+type PostTerm struct {
+	PostID    int64 `json:"post_id"`
+	TermID    int64 `json:"term_id"`
+	IsPrimary bool  `json:"is_primary"`
+}
+
+type PostVideo struct {
+	ID               int64       `json:"id"`
+	PostID           int64       `json:"post_id"`
+	Provider         string      `json:"provider"`
+	ExternalID       string      `json:"external_id"`
+	Url              string      `json:"url"`
+	Title            string      `json:"title"`
+	Description      string      `json:"description"`
+	ThumbnailUrl     string      `json:"thumbnail_url"`
+	ThumbnailMediaID pgtype.Int8 `json:"thumbnail_media_id"`
+	DurationSeconds  pgtype.Int4 `json:"duration_seconds"`
+	UploadDate       *time.Time  `json:"upload_date"`
+	FamilyFriendly   pgtype.Bool `json:"family_friendly"`
+	Source           string      `json:"source"`
+	CreatedAt        time.Time   `json:"created_at"`
+	UpdatedAt        time.Time   `json:"updated_at"`
+}
+
+type Redirect struct {
+	ID        int64         `json:"id"`
+	Source    string        `json:"source"`
+	Match     string        `json:"match"`
+	Target    *string       `json:"target"`
+	Status    int32         `json:"status"`
+	Hits      int64         `json:"hits"`
+	LastHitAt *time.Time    `json:"last_hit_at"`
+	Note      string        `json:"note"`
+	CreatedBy uuid.NullUUID `json:"created_by"`
+	Origin    string        `json:"origin"`
+	LegacyKey *string       `json:"legacy_key"`
+	CreatedAt time.Time     `json:"created_at"`
+	UpdatedAt time.Time     `json:"updated_at"`
+}
 
 type RefreshToken struct {
 	ID         uuid.UUID     `json:"id"`
@@ -23,14 +212,57 @@ type RefreshToken struct {
 	SessionID  uuid.UUID     `json:"session_id"`
 }
 
+type Seo struct {
+	EntityType          string      `json:"entity_type"`
+	EntityID            int64       `json:"entity_id"`
+	Title               *string     `json:"title"`
+	Description         *string     `json:"description"`
+	Canonical           *string     `json:"canonical"`
+	RobotsNoindex       pgtype.Bool `json:"robots_noindex"`
+	RobotsNofollow      pgtype.Bool `json:"robots_nofollow"`
+	RobotsAdvanced      []string    `json:"robots_advanced"`
+	OgTitle             *string     `json:"og_title"`
+	OgDescription       *string     `json:"og_description"`
+	OgImageMediaID      pgtype.Int8 `json:"og_image_media_id"`
+	TwitterTitle        *string     `json:"twitter_title"`
+	TwitterDescription  *string     `json:"twitter_description"`
+	TwitterImageMediaID pgtype.Int8 `json:"twitter_image_media_id"`
+	FocusKeyphrase      *string     `json:"focus_keyphrase"`
+	BreadcrumbTitle     *string     `json:"breadcrumb_title"`
+	IsCornerstone       bool        `json:"is_cornerstone"`
+	CreatedAt           time.Time   `json:"created_at"`
+	UpdatedAt           time.Time   `json:"updated_at"`
+}
+
+type Setting struct {
+	Key       string    `json:"key"`
+	Value     []byte    `json:"value"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
+type Term struct {
+	ID          int64       `json:"id"`
+	Taxonomy    string      `json:"taxonomy"`
+	Slug        string      `json:"slug"`
+	Name        string      `json:"name"`
+	Description string      `json:"description"`
+	ParentID    pgtype.Int8 `json:"parent_id"`
+	LegacyKey   *string     `json:"legacy_key"`
+	CreatedAt   time.Time   `json:"created_at"`
+	UpdatedAt   time.Time   `json:"updated_at"`
+}
+
 type User struct {
 	ID           uuid.UUID `json:"id"`
 	Username     string    `json:"username"`
 	Email        string    `json:"email"`
-	PasswordHash string    `json:"password_hash"`
+	PasswordHash *string   `json:"password_hash"`
 	FirstName    string    `json:"first_name"`
 	LastName     string    `json:"last_name"`
-	UserType     string    `json:"user_type"`
 	CreatedAt    time.Time `json:"created_at"`
 	UpdatedAt    time.Time `json:"updated_at"`
+	DisplayName  string    `json:"display_name"`
+	LegacyKey    *string   `json:"legacy_key"`
+	Role         string    `json:"role"`
 }

@@ -21,20 +21,20 @@ const (
   accessCookiePath  = "/admin/api/"
   refreshCookiePath = "/admin/api/v1/"
   ctxUserID         = "user_id"
-  ctxUserType       = "user_type"
+  ctxRole           = "role"
   ctxSessionID      = "session_id"
 )
 
 type accessClaims struct {
-  UserType  string `json:"user_type"`
+  Role      string `json:"role"`
   SessionID string `json:"sid"`
   jwt.RegisteredClaims
 }
 
-func (h *authHandler) signAccess(userID uuid.UUID, userType string, sessionID uuid.UUID) (string, error) {
+func (h *authHandler) signAccess(userID uuid.UUID, role string, sessionID uuid.UUID) (string, error) {
   now := time.Now()
   claims := accessClaims{
-    UserType:  userType,
+    Role:      role,
     SessionID: sessionID.String(),
     RegisteredClaims: jwt.RegisteredClaims{
       Subject:   userID.String(),
@@ -132,7 +132,7 @@ func (h *authHandler) requireAuth(next echo.HandlerFunc) echo.HandlerFunc {
     }
 
     c.Set(ctxUserID, userID)
-    c.Set(ctxUserType, session.UserType)
+    c.Set(ctxRole, session.Role)
     c.Set(ctxSessionID, sessionID)
     return next(c)
   }
@@ -140,7 +140,7 @@ func (h *authHandler) requireAuth(next echo.HandlerFunc) echo.HandlerFunc {
 
 func requireAdmin(next echo.HandlerFunc) echo.HandlerFunc {
   return func(c *echo.Context) error {
-    if userType, _ := c.Get(ctxUserType).(string); userType != "admin" {
+    if role, _ := c.Get(ctxRole).(string); role != "admin" {
       return jsonError(c, http.StatusForbidden, "admins only")
     }
     return next(c)

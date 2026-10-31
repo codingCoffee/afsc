@@ -28,10 +28,10 @@ onMounted(() => {
         <span>@{{ user.username }}</span>
         <span class="hidden sm:inline">{{ user.email }}</span>
         <Badge
-          :variant="user.user_type === 'admin' ? 'default' : 'outline'"
+          :variant="user.role === 'admin' ? 'default' : 'outline'"
           class="rounded-sm font-mono text-[10px] tracking-widest uppercase"
         >
-          {{ user.user_type }}
+          {{ user.role }}
         </Badge>
       </div>
 
@@ -44,7 +44,7 @@ onMounted(() => {
         Nothing here yet. That's the point.
       </p>
 
-      <div v-if="user.user_type === 'admin'" class="mt-14 grid max-w-2xl gap-px overflow-hidden rounded-md border bg-border animate-rise [animation-delay:320ms] sm:grid-cols-2">
+      <div v-if="user.role === 'admin'" class="mt-14 grid max-w-2xl gap-px overflow-hidden rounded-md border bg-border animate-rise [animation-delay:320ms] sm:grid-cols-2">
         <NuxtLink
           v-for="m in models"
           :key="m.to"

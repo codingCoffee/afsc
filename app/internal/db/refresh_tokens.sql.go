@@ -66,7 +66,7 @@ func (q *Queries) DeleteExpiredRefreshTokens(ctx context.Context) (int64, error)
 }
 
 const getActiveSession = `-- name: GetActiveSession :one
-SELECT u.id, u.user_type
+SELECT u.id, u.role
 FROM refresh_tokens rt
 JOIN users u ON u.id = rt.user_id
 WHERE rt.session_id = $1 AND rt.revoked_at IS NULL AND rt.expires_at > now()
@@ -74,14 +74,14 @@ LIMIT 1
 `
 
 type GetActiveSessionRow struct {
-	ID       uuid.UUID `json:"id"`
-	UserType string    `json:"user_type"`
+	ID   uuid.UUID `json:"id"`
+	Role string    `json:"role"`
 }
 
 func (q *Queries) GetActiveSession(ctx context.Context, sessionID uuid.UUID) (GetActiveSessionRow, error) {
 	row := q.db.QueryRow(ctx, getActiveSession, sessionID)
 	var i GetActiveSessionRow
-	err := row.Scan(&i.ID, &i.UserType)
+	err := row.Scan(&i.ID, &i.Role)
 	return i, err
 }
 

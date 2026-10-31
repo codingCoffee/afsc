@@ -2,10 +2,10 @@
 SELECT pg_advisory_xact_lock(hashtext('afsc_user_signup'));
 
 -- name: CreateUser :one
-INSERT INTO users (username, email, password_hash, first_name, last_name, user_type)
+INSERT INTO users (username, email, password_hash, first_name, last_name, role)
 VALUES (
   @username, @email, @password_hash, @first_name, @last_name,
-  CASE WHEN EXISTS (SELECT 1 FROM users) THEN 'user' ELSE 'admin' END
+  CASE WHEN EXISTS (SELECT 1 FROM users) THEN 'contributor' ELSE 'admin' END
 )
 RETURNING *;
 
@@ -15,9 +15,9 @@ SELECT * FROM users WHERE username = @login OR email = @login;
 -- name: GetUserByID :one
 SELECT * FROM users WHERE id = @id;
 
--- name: CreateUserWithType :one
-INSERT INTO users (username, email, password_hash, first_name, last_name, user_type)
-VALUES (@username, @email, @password_hash, @first_name, @last_name, @user_type)
+-- name: CreateUserWithRole :one
+INSERT INTO users (username, email, password_hash, first_name, last_name, role)
+VALUES (@username, @email, @password_hash, @first_name, @last_name, @role)
 RETURNING *;
 
 -- name: ListUsers :many
@@ -27,7 +27,7 @@ SELECT * FROM users ORDER BY created_at ASC, id ASC LIMIT @lim OFFSET @off;
 SELECT count(*) FROM users;
 
 -- name: CountAdmins :one
-SELECT count(*) FROM users WHERE user_type = 'admin';
+SELECT count(*) FROM users WHERE role = 'admin';
 
 -- name: DeleteUser :execrows
 DELETE FROM users WHERE id = @id;
