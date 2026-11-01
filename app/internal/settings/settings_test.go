@@ -48,6 +48,12 @@ func TestDecodeRejects(t *testing.T) {
 		`{"seo":{"indexnow":{"key":"../../etc/passwd"}}}`:  "seo.indexnow.key",
 		`{"seo":{"sitemaps":{"layout":"x"}}}`:              "unknown field",
 	}
+	for _, in := range []string{`{"retention_days":0}`, `{"retention_days":3651}`} {
+		cases[`{"seo":{"not_found":`+in+`}}`] = "seo.not_found.retention_days"
+	}
+	for _, in := range []string{`["x.php"]`, `[""]`, `["/` + strings.Repeat("a", 256) + `"]`} {
+		cases[`{"seo":{"not_found":{"noise_patterns":`+in+`}}}`] = "seo.not_found.noise_patterns"
+	}
 	for in, want := range cases {
 		if _, _, err := Decode([]byte(in)); err == nil || !strings.Contains(err.Error(), want) {
 			t.Errorf("Decode(%s) error = %v, want it to contain %q", in, err, want)
@@ -70,6 +76,23 @@ func TestSEOFileSettings(t *testing.T) {
 	}
 	if s := all.SEO; s.Sitemaps.PageSize != 2 || s.LLMsTxt.Body != "# X" || s.IndexNow.Key != "0123abcd-ef" {
 		t.Errorf("seo = %+v", s)
+	}
+}
+
+func TestNotFoundSettings(t *testing.T) {
+	all, _, err := Decode([]byte(`{"seo":{"not_found":{"retention_days":30}}}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if nf := all.SEO.NotFound; nf.RetentionDays != 30 || len(nf.NoisePatterns) != len(DefaultNoisePatterns()) {
+		t.Errorf("not_found = %+v", nf)
+	}
+	all, _, err = Decode([]byte(`{"seo":{"not_found":{"noise_patterns":[]}}}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if nf := all.SEO.NotFound; len(nf.NoisePatterns) != 0 || nf.RetentionDays != 90 {
+		t.Errorf("an empty list must turn filtering off: %+v", nf)
 	}
 }
 

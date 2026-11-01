@@ -22,6 +22,7 @@ import (
 	"github.com/urfave/cli/v3"
 
 	"afsc/internal/imgproxy"
+	"afsc/internal/redirects"
 	"afsc/internal/site"
 	"afsc/internal/storage"
 )
@@ -159,12 +160,14 @@ func serve(ctx context.Context, cmd *cli.Command) error {
 
 	api := e.Group("/admin/api/v1")
 	api.GET("/ht", healthHandler(pool))
-	newAuthHandler(pool, authConfig{
+	auth := newAuthHandler(pool, authConfig{
 		secret:          []byte(secret),
 		accessTTL:       time.Duration(accessMins) * time.Minute,
 		refreshTTL:      time.Duration(refreshDays) * 24 * time.Hour,
 		strictPasswords: !dev,
-	}).register(api)
+	})
+	auth.register(api)
+	auth.registerRedirects(api, &redirectHandler{store: &redirects.Store{DB: pool, Router: pub.Router()}, site: pub})
 
 	addr := net.JoinHostPort(cmd.String("api-host"), strconv.Itoa(cmd.Int("api-port")))
 	sc := echo.StartConfig{Address: addr}

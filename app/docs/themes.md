@@ -145,7 +145,10 @@ Defaults shown; the bases, post pattern and trailing slash come from the `permal
   7. Prefix redirects (longest first, to the target as-is), then regex redirects (RE2, `$1` expands).
   8. 404.
 - **Not-found log.** 404s are counted in memory and written to `not_found_log` every 10 seconds, or sooner at 1,000
-  distinct paths.
+  distinct paths. Paths matching `seo.not_found.noise_patterns` (`*.php`, `/.env*`, `/wp-admin/*` and so on) are
+  never logged.
+- **Redirect hits.** Every redirect served in steps 4 and 7 adds to that redirect's `hits` and `last_hit_at`,
+  written every 60 seconds. A CDN that caches redirects hides the hits it answers.
 
 ## Sitemaps and text files
 

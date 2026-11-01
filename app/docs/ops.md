@@ -1,7 +1,7 @@
 # Operations
 
-Notes for running AFSC in production. This page covers media serving, imgproxy and the page cache for now; later
-milestones add to it.
+Notes for running AFSC in production. This page covers media serving, imgproxy, the page cache, redirects and the
+404 log for now; later milestones add to it.
 
 ## Media and imgproxy
 
@@ -158,6 +158,78 @@ the page TTL, like pages. Purges are per sitemap type: every page of one type (`
 Set `seo.indexnow` to `{"enabled": true, "key": "…"}` (8 to 128 letters, digits or dashes). AFSC then serves the key
 at `/{key}.txt` so search engines can verify it. Generate a key with `openssl rand -hex 16`. To rotate it, change the
 setting; the old file stops being served at once. AFSC doesn't send pings yet; they arrive with publishing (M3).
+
+## Redirects and the 404 log
+
+### Redirect API
+
+The redirect manager is a JSON API under `/admin/api/v1`. Every route needs a signed-in **admin or editor** (the
+same JWT as the rest of the admin API); other roles get 403. The admin screens arrive in M3.
+
+| Route | Does |
+|---|---|
+| `GET /redirects?q=&match=&origin=&sort=hits\|source\|created&page=&page_size=` | Page through redirects (`q` searches source, target and note) |
+| `GET /redirects/{id}` | One redirect, with `hits`, `last_hit_at`, `origin` and `created_by` |
+| `POST /redirects[?flatten=1]` | Create `{source, match, target, status, note}`; 201 `{redirect, warnings, flattened_ids}` |
+| `PUT /redirects/{id}[?flatten=1]` | Replace the same fields; 200 with the same body |
+| `DELETE /redirects/{id}` | 204 |
+| `POST /redirects/test` | `{match, source, target, paths}` (at most 100 paths) → what the rule does with each path |
+| `GET /redirects/export` | Every redirect as CSV: `source,match,target,status,note` |
+| `POST /redirects/import[?flatten=1]` | A CSV body with those columns (any order; only `source` is required) |
+| `GET /not-found?q=&sort=hits\|last_seen&page=&page_size=` | Page through the 404 log, most hits first |
+| `POST /not-found/dismiss` | `{paths: [...]}` (at most 1,000) → `{dismissed}` |
+
+- **Fields.** `match` is `exact` (default), `prefix` or `regex` (RE2); `status` is 301 (default), 302, 307, 308,
+  410 or 451, and 410/451 take no target. Targets are a path or an http(s) URL; same-site URLs are stored as paths.
+  Exact sources and internal targets are stored in canonical form (lowercase, trailing-slash policy), prefix
+  sources in lowercase. Sources under `/admin`, and exact sources the site answers before redirects (sitemaps,
+  `robots.txt`, `/m/` and legacy upload paths), are rejected. Regexes are capped at 500 bytes and 1,000 compiled
+  RE2 steps; RE2 runs in linear time, so no pattern can stall a request.
+- **Chain and loop checks.** On every save the target is followed the way a visitor's browser would: exact
+  redirects, the canonical 301, content, then prefix and regex redirects, up to 10 hops. The save gets a 409 when:
+
+  | `code` | Meaning | `?flatten=1` |
+  |---|---|---|
+  | `chain` | The target redirects again | Saves with `flattened_target`, where the chain ends |
+  | `loop` | The target leads back to this redirect | No |
+  | `gone` | The target ends at a 410 or 451 | No |
+  | `too_long` | More than 10 hops | No |
+
+  The 409 body is `{message, field: "target", code, hops: [{from, to, status, via, redirect_id}], flattened_target}`.
+  Redirects that already pointed at the new source are flattened in the same transaction and listed in
+  `flattened_ids`. Warnings don't block a save: an exact source that hides a live page, a target that is a 404,
+  and regex targets with `$` groups (not checked). Saves take an advisory lock, so two editors can't build a chain
+  between them.
+- **CSV import** is all or nothing: every row is checked in file order (later rows see earlier ones), and any error
+  returns 422 with `{errors: [{line, field, message}]}` and writes nothing. A row replaces the redirect with the same
+  exact source (or the same `match` and `source` for prefix and regex), otherwise creates one with origin `manual`.
+  Files are capped at 5 MB and 10,000 rows. Exports prefix cells starting with `= + - @` with `'` so spreadsheets
+  don't run them as formulas; imports strip that prefix again.
+- **Imported redirects** (origin `import`) keep their origin and `legacy_key` when edited here, so the next bundle
+  import overwrites the edit.
+- **Caching.** Saving an exact redirect purges its source path. Saving a prefix or regex redirect reloads site data
+  on every replica and purges every cached page, so bulk edits of those are best done as one CSV import. Redirects
+  themselves are never stored in the in-process cache; a CDN keeps them for one TTL.
+- **Hit counts** are kept in memory and written every 60 seconds and on shutdown, like legacy upload hits. A CDN
+  answering cached redirects means those hits are never counted.
+
+### Auto redirects
+
+`internal/redirects.SlugChange` creates a 301 (origin `slug_change`) from each old URL to its new one, points
+redirects that targeted the old URL at the new one, and deletes any exact redirect whose source is the new URL
+(it would hide the content). `site.PostURLs`, `TermURLs` and `AuthorURLs` compute the URL sets to compare. Nothing
+calls them yet: the post, term and author editors arrive in M3, and imports never trigger them.
+
+### 404 log
+
+- **What's logged.** Every 404 on the public site, with its hit count, first and last time seen and last referrer,
+  except paths matching `seo.not_found.noise_patterns` (default `*.php`, `/.env*`, `/.git/*`, `/wp-admin/*`,
+  `*.asp*`, `/cgi-bin/*`). Patterns are checked when a 404 happens, so rows logged before a pattern was added stay
+  until dismissed or pruned.
+- **Retention.** Rows not seen for `seo.not_found.retention_days` (default 90) are deleted once at startup and
+  then daily. With several replicas, one prunes at a time (`pg_try_advisory_xact_lock`); the others skip.
+- **Dismiss** deletes rows. A path that is hit again comes back with a fresh count, so add a noise pattern for
+  recurring junk. Creating an exact redirect also removes the 404 row for its source.
 
 ## General
 

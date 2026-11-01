@@ -48,6 +48,7 @@ type Site struct {
 	host      string
 	listening atomic.Bool
 	nf        *notFoundLog
+	rh        *redirectHits
 	now       func() time.Time
 }
 
@@ -55,7 +56,8 @@ func New(ctx context.Context, cfg Config) (*Site, error) {
 	if cfg.Logf == nil {
 		cfg.Logf = func(string, ...any) {}
 	}
-	st := &Site{cfg: cfg, db: cfg.Pool, lk: &pgLookup{db: cfg.Pool}, nf: newNotFoundLog(), now: time.Now}
+	st := &Site{cfg: cfg, db: cfg.Pool, lk: &pgLookup{db: cfg.Pool}, nf: newNotFoundLog(), rh: newRedirectHits(),
+		now: time.Now}
 	st.host = cfg.BaseURL[strings.Index(cfg.BaseURL, "://")+3:]
 	if cfg.CacheBytes > 0 {
 		st.cache = pagecache.New(cfg.CacheBytes, min(cfg.CacheBytes, maxEntryBytes))
@@ -76,8 +78,8 @@ func New(ctx context.Context, cfg Config) (*Site, error) {
 	return st, nil
 }
 
-// Run refreshes cached site data, listens for cache events and flushes the 404 log until ctx is done,
-// then flushes once more.
+// Run refreshes cached site data, listens for cache events, flushes the 404 log and hit counters and prunes the
+// 404 log daily until ctx is done, then flushes once more.
 func (st *Site) Run(ctx context.Context) {
 	listenDone := make(chan struct{})
 	go func() {
@@ -90,23 +92,30 @@ func (st *Site) Run(ctx context.Context) {
 		every = 2 * time.Second
 	}
 	refresh, flush, hits := time.NewTicker(every), time.NewTicker(10*time.Second), time.NewTicker(60*time.Second)
+	prune := time.NewTicker(24 * time.Hour)
 	defer refresh.Stop()
 	defer flush.Stop()
 	defer hits.Stop()
+	defer prune.Stop()
+	flushHits := func(ctx context.Context) {
+		st.flushRedirectHits(ctx)
+		if st.media != nil {
+			st.media.FlushHits(ctx)
+		}
+	}
+	st.pruneNotFound(ctx)
 	for {
 		select {
 		case <-ctx.Done():
 			fctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
 			st.flushNotFound(fctx)
-			if st.media != nil {
-				st.media.FlushHits(fctx)
-			}
+			flushHits(fctx)
 			cancel()
 			return
 		case <-hits.C:
-			if st.media != nil {
-				st.media.FlushHits(ctx)
-			}
+			flushHits(ctx)
+		case <-prune.C:
+			st.pruneNotFound(ctx)
 		case <-refresh.C:
 			_ = st.refresh(ctx)
 		case <-flush.C:

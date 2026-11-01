@@ -1,7 +1,6 @@
 package site
 
 import (
-	"cmp"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -13,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"afsc/internal/redirects"
 	"afsc/internal/settings"
 	"afsc/internal/theme"
 )
@@ -38,9 +38,9 @@ type snapshot struct {
 	authorSlugs  map[string]int64
 	authorLegacy map[string]int64
 
-	menus  map[string][]*theme.MenuItem
-	prefix []*Redirect // longest source first
-	regex  []*Redirect // id order
+	menus map[string][]*theme.MenuItem
+	rules *redirects.Set // prefix and regex redirects
+	noise *regexp.Regexp // seo.not_found.noise_patterns; nil matches nothing
 }
 
 type pageKey struct {
@@ -78,14 +78,7 @@ type authorRow struct {
 	Breadcrumb string
 }
 
-type Redirect struct {
-	ID     int64
-	Source string
-	Match  string
-	Target string
-	Status int
-	re     *regexp.Regexp
-}
+type Redirect = redirects.Rule
 
 var legacyNumRe = regexp.MustCompile(`^[a-z0-9]+:(post|term|user):(\d+)$`)
 
@@ -202,17 +195,7 @@ func (s *snapshot) authorView(id int64) *theme.Author {
 
 // matchRedirect tries prefix redirects, longest source first, then regex redirects in id order.
 func (s *snapshot) matchRedirect(path string) (*Redirect, string) {
-	for _, r := range s.prefix {
-		if strings.HasPrefix(path, strings.ToLower(r.Source)) {
-			return r, r.Target
-		}
-	}
-	for _, r := range s.regex {
-		if m := r.re.FindStringSubmatchIndex(path); m != nil {
-			return r, string(r.re.ExpandString(nil, r.Target, path, m))
-		}
-	}
-	return nil, ""
+	return s.rules.Match(path)
 }
 
 const (
@@ -280,6 +263,7 @@ func (s *snapshot) setSettings(all settings.All) error {
 		return err
 	}
 	s.settings, s.loc, s.perm, s.homeID, s.postsPageID = all, loc, perm, 0, 0
+	s.noise = noiseMatcher(all.SEO.NotFound.NoisePatterns)
 	if r := all.Reading.Home; r != nil {
 		s.homeID = r.ID
 	}
@@ -388,22 +372,19 @@ func (st *Site) loadRedirects(ctx context.Context, s *snapshot) error {
 		return err
 	}
 	defer rows.Close()
+	var rules []*Redirect
 	for rows.Next() {
 		r := &Redirect{}
 		if err := rows.Scan(&r.ID, &r.Source, &r.Match, &r.Target, &r.Status); err != nil {
 			return err
 		}
-		if r.Match == "regex" {
-			if r.re, err = regexp.Compile(r.Source); err != nil {
-				st.cfg.Logf("redirect %d: invalid regex skipped: %v", r.ID, err)
-				continue
-			}
-			s.regex = append(s.regex, r)
-		} else {
-			s.prefix = append(s.prefix, r)
+		if err := r.Compile(); err != nil {
+			st.cfg.Logf("redirect %d: invalid regex skipped: %v", r.ID, err)
+			continue
 		}
+		rules = append(rules, r)
 	}
-	slices.SortStableFunc(s.prefix, func(a, b *Redirect) int { return cmp.Compare(len(b.Source), len(a.Source)) })
+	s.rules = redirects.NewSet(rules)
 	return rows.Err()
 }
 

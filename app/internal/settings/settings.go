@@ -88,6 +88,7 @@ type SEO struct {
 	LLMsTxt              LLMsTxt           `json:"llms_txt"`
 	Sitemaps             Sitemaps          `json:"sitemaps"`
 	IndexNow             IndexNow          `json:"indexnow"`
+	NotFound             NotFound          `json:"not_found"`
 }
 
 type LLMsTxt struct {
@@ -102,6 +103,17 @@ type Sitemaps struct {
 type IndexNow struct {
 	Enabled bool   `json:"enabled"`
 	Key     string `json:"key"`
+}
+
+// NotFound controls the 404 log. Paths matching a noise pattern (globs: * spans slashes, ? is one character,
+// case-insensitive, whole path) are never logged.
+type NotFound struct {
+	NoisePatterns []string `json:"noise_patterns"`
+	RetentionDays int      `json:"retention_days"`
+}
+
+func DefaultNoisePatterns() []string {
+	return []string{"*.php", "/.env*", "/.git/*", "/wp-admin/*", "*.asp*", "/cgi-bin/*"}
 }
 
 type Discussion struct {
@@ -150,6 +162,7 @@ func Defaults() All {
 			KnowledgeGraph:       KnowledgeGraph{Type: "organization"},
 			LLMsTxt:              LLMsTxt{Mode: "off"},
 			Sitemaps:             Sitemaps{PageSize: 1000},
+			NotFound:             NotFound{NoisePatterns: DefaultNoisePatterns(), RetentionDays: 90},
 		},
 		Discussion: Discussion{CommentsEnabled: true, ThreadDepth: 3},
 		Cache:      Cache{PageTTLSeconds: 60},
@@ -268,6 +281,18 @@ func (a All) Validate() error {
 	}
 	if in := a.SEO.IndexNow; (in.Enabled || in.Key != "") && !indexNowKey.MatchString(in.Key) {
 		bad("seo.indexnow.key: must be 8-128 letters, digits or dashes")
+	}
+	if nf := a.SEO.NotFound; len(nf.NoisePatterns) > 200 {
+		bad("seo.not_found.noise_patterns: at most 200 patterns")
+	} else {
+		for _, p := range nf.NoisePatterns {
+			if len(p) > 256 || !(strings.HasPrefix(p, "/") || strings.HasPrefix(p, "*")) {
+				bad("seo.not_found.noise_patterns: %q must start with / or * and be at most 256 bytes", p)
+			}
+		}
+	}
+	if d := a.SEO.NotFound.RetentionDays; d < 1 || d > 3650 {
+		bad("seo.not_found.retention_days: must be 1-3650")
 	}
 	if a.Discussion.ThreadDepth < 1 || a.Discussion.ThreadDepth > 10 {
 		bad("discussion.thread_depth: must be 1-10")

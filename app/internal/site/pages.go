@@ -21,7 +21,7 @@ func (st *Site) renderPage(r *http.Request, snap *snapshot, res Result, query st
 	if d == nil {
 		d, status = st.basePage(snap, r, theme.Kind404), http.StatusNotFound
 	}
-	if status == http.StatusNotFound {
+	if status == http.StatusNotFound && !snap.noise404(r.URL.Path) {
 		st.nf.add(r.URL.Path, r.Referer(), st.now())
 	}
 	d.Request.Query = query

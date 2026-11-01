@@ -32,8 +32,10 @@ Environment: `AFSC_DATABASE_URL`, and unless `--dry-run`, `AFSC_S3_BUCKET`, `AFS
   videos → comments → menus → redirects → legacy records → settings. Settings come last because they reference
   pages and media. Each step is one transaction; a failure stops the import, and a re-run continues safely.
 - **Concurrency.** Imports take a database advisory lock, so two imports never run at once.
-- **Side effects** (webhooks, IndexNow pings, emails, auto redirects) don't exist yet and will be suppressed during
-  import. The IndexNow key file is served as soon as `seo.indexnow` is enabled; it isn't a side effect.
+- **Side effects** are suppressed during import. Webhooks, IndexNow pings and emails don't exist yet. Auto redirects
+  exist as a core (M2c) but only editor actions will call them, so an import that changes slugs never creates
+  `slug_change` redirects. The IndexNow key file is served as soon as `seo.indexnow` is enabled; it isn't a side
+  effect.
 - **Users** are created without a password and can't sign in until invited. The report lists one invite command per
   user. *The `afsc user invite` command ships with the admin milestone (M3).* An imported user whose email matches an
   existing AFSC account is linked to that account instead; its role and password are kept. A re-import never changes a
@@ -256,6 +258,12 @@ Re-importing a menu replaces its items. Items added in AFSC to an imported menu 
 - `status` is one of `301 302 307 308 410 451`. `target` is required except for 410 and 451.
 - Sources under `/admin` are rejected.
 - An exact source already used by a redirect from outside the bundle is skipped with a warning.
+- **No chain or loop checks on import.** Imported redirects are written as given (`origin: "import"`), so a bundle
+  can bring in chains it had in WordPress. The checks run when an editor saves one of them through the admin API,
+  which keeps its `origin` and `legacy_key`; a re-import overwrites that edit. Flatten chains in the bundle when
+  you can: point each redirect at the final URL rather than at another redirect's source.
+- Exact sources are stored as given. The site matches them against both the raw and the canonical request path,
+  so give the canonical form (lowercase, with the trailing slash policy applied) where you can.
 
 ### legacy.ndjson
 
@@ -272,12 +280,12 @@ Reference fields take legacy keys.
 | `site` | `title` (""), `tagline` (""), `timezone` ("UTC", IANA name), `date_format` ("January 2, 2006", Go layout), `language` ("en"; a BCP 47 tag such as `en-IN`, also used for `og:locale`, where a bare `en` becomes `en_US`) |
 | `permalinks` | `post_pattern` ("/{slug}/"; tokens `{slug} {year} {month} {day} {id} {category}`, must contain `{slug}` or `{id}`), `category_base` ("category"), `tag_base` ("tag"), `author_base` ("author"), `trailing_slash` ("always" \| "never"), `date_archives_enabled` (true), `author_archives_enabled` (true), `wpcompat_enabled` (true; the `/?p=` style WordPress URL layer) |
 | `reading` | `home` (null = latest posts, or a page key), `posts_page` (page key or null), `posts_per_page` (10, 1–100), `feed_items` (10, 1–100), `feed_excerpt_only` (false) |
-| `seo` | `separator` ("-"), `title_templates` and `description_templates` (type → template; types `post page category tag author home search 404 date`; given entries override the defaults), `knowledge_graph` (`{type: "organization" \| "person", name, logo_media}`), `social_profiles` (https URLs), `twitter_site`, `default_image_media` (media key), `tag_noindex` (false), `auto_description` (false), `robots_txt` ("" = allow all plus the `Sitemap:` line; otherwise served verbatim as `/robots.txt`), `llms_txt` (`{mode: "off" \| "auto" \| "custom", body: ""}`; `custom` needs a `body`), `sitemaps` (`{page_size: 1000}`, 1–50000 URLs per sitemap file), `indexnow` (`{enabled: false, key: ""}`; the key is 8–128 letters, digits or dashes and is required when enabled) |
+| `seo` | `separator` ("-"), `title_templates` and `description_templates` (type → template; types `post page category tag author home search 404 date`; given entries override the defaults), `knowledge_graph` (`{type: "organization" \| "person", name, logo_media}`), `social_profiles` (https URLs), `twitter_site`, `default_image_media` (media key), `tag_noindex` (false), `auto_description` (false), `robots_txt` ("" = allow all plus the `Sitemap:` line; otherwise served verbatim as `/robots.txt`), `llms_txt` (`{mode: "off" \| "auto" \| "custom", body: ""}`; `custom` needs a `body`), `sitemaps` (`{page_size: 1000}`, 1–50000 URLs per sitemap file), `indexnow` (`{enabled: false, key: ""}`; the key is 8–128 letters, digits or dashes and is required when enabled), `not_found` (`{noise_patterns: ["*.php", "/.env*", "/.git/*", "/wp-admin/*", "*.asp*", "/cgi-bin/*"], retention_days: 90}`; see below) |
 | `discussion` | `comments_enabled` (true), `close_after_days` (0 = never), `thread_depth` (3, 1–10) |
 | `cache` | `page_ttl_seconds` (60, 0–86400; how long browsers, CDNs and the in-process cache keep public pages; 0 = `no-cache`, nothing kept in-process) |
 
-The `seo` file keys (`robots_txt`, `llms_txt`, `sitemaps`, `indexnow`) were added in M2. Bundles without them stay
-valid. When migrating from WordPress:
+The `seo` keys `robots_txt`, `llms_txt`, `sitemaps`, `indexnow` and `not_found` were added in M2. Bundles without
+them stay valid. When migrating from WordPress:
 
 - `robots_txt`: the site's current `/robots.txt` text when it was customised (a physical file or Yoast's file
   editor). Leave it empty for WordPress's virtual default; AFSC's default is equivalent and points at the AFSC
@@ -286,6 +294,16 @@ valid. When migrating from WordPress:
   leave the default of 1000, which is also Yoast's default and keeps the same sitemap file names.
 - `indexnow`: the key the site already serves, if any, so search engines don't need to verify a new one.
 - `llms_txt`: the current `/llms.txt` as `{mode: "custom", body}` when the site has one.
+- `not_found`: leave it out to keep the defaults. If the Redirection plugin's 404 log was configured to ignore
+  paths, add those as patterns.
+
+`seo.not_found` controls the 404 log:
+
+- `noise_patterns` are globs matched against the whole request path, ignoring case: `*` matches any run of
+  characters including `/`, `?` matches one character, everything else is literal. Each pattern starts with `/` or
+  `*` and is at most 256 bytes; at most 200 patterns. Matching 404s are never logged. Giving the key replaces the
+  default list; `[]` logs every 404.
+- `retention_days` (1–3650) is how long a path stays in the log after it was last seen.
 
 ## Content
 

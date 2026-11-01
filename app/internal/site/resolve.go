@@ -65,6 +65,7 @@ func (st *Site) resolve(ctx context.Context, snap *snapshot, r *http.Request) (R
 		return Result{}, err
 	}
 	if rd != nil {
+		st.rh.hit(rd.ID, st.now())
 		return redirectTo(rd, rd.Target), nil
 	}
 	if canon != raw {
@@ -83,6 +84,7 @@ func (st *Site) resolve(ctx context.Context, snap *snapshot, r *http.Request) (R
 	}
 
 	if rd, target := snap.matchRedirect(canon); rd != nil {
+		st.rh.hit(rd.ID, st.now())
 		return redirectTo(rd, target), nil
 	}
 	return notFound(), nil

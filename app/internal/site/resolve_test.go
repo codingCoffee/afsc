@@ -4,11 +4,11 @@ import (
 	"context"
 	"fmt"
 	"net/http/httptest"
-	"regexp"
 	"slices"
 	"testing"
 	"time"
 
+	"afsc/internal/redirects"
 	"afsc/internal/settings"
 	"afsc/internal/theme"
 )
@@ -87,9 +87,11 @@ func testSite(t *testing.T, mod func(*settings.All)) *Site {
 	term(8, 0, "tag", "example")
 	s.authors[2] = &authorRow{ID: 2, LegacyKey: "wp:user:2", Slug: "author-a", Name: "Author A"}
 	s.index()
-	s.prefix = []*Redirect{{ID: 2, Source: "/archive/2015/", Match: "prefix", Target: "/", Status: 302}}
-	s.regex = []*Redirect{{ID: 3, Source: `^/topics/([a-z-]+)/?$`, Match: "regex", Target: "/category/$1/", Status: 301,
-		re: regexp.MustCompile(`^/topics/([a-z-]+)/?$`)}}
+	topics := &Redirect{ID: 3, Source: `^/topics/([a-z-]+)/?$`, Match: "regex", Target: "/category/$1/", Status: 301}
+	if err := topics.Compile(); err != nil {
+		t.Fatal(err)
+	}
+	s.rules = redirects.NewSet([]*Redirect{{ID: 2, Source: "/archive/2015/", Match: "prefix", Target: "/", Status: 302}, topics})
 
 	posts := []*PostRef{
 		{ID: 123, LegacyKey: "wp:post:123", Type: "post", Slug: "example-post", Status: "published", PublishedAt: &testPub, CategoryID: 6},
