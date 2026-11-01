@@ -1,5 +1,3 @@
-{{define "title"}}{{if eq .Kind "front_page"}}{{.Site.Title}}{{with .Site.Tagline}} – {{.}}{{end}}{{else}}{{.Post.Title}} | {{.Site.Title}}{{end}}{{end}}
-
 {{define "content"}}
 {{- if ne .Kind "front_page"}}{{template "parts/breadcrumbs.html" .}}{{end}}
 <article class="{{post_class .Post}}">

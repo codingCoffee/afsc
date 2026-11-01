@@ -1,11 +1,11 @@
 package pagecache
 
 import (
-  "net/http"
-  "net/url"
-  "strconv"
-  "strings"
-  "unicode/utf8"
+	"net/http"
+	"net/url"
+	"strconv"
+	"strings"
+	"unicode/utf8"
 )
 
 // MaxQueryRunes caps the q parameter, matching the search handler.
@@ -19,44 +19,44 @@ const CookiePrefix = "afsc_"
 
 // Bypass reports whether r must skip the page cache entirely.
 func Bypass(r *http.Request) bool {
-  if r.Method != http.MethodGet && r.Method != http.MethodHead {
-    return true
-  }
-  if r.Header.Get("Authorization") != "" {
-    return true
-  }
-  for _, c := range r.Cookies() {
-    if strings.HasPrefix(c.Name, CookiePrefix) {
-      return true
-    }
-  }
-  q, _ := url.ParseQuery(r.URL.RawQuery)
-  for _, k := range reserved {
-    if _, ok := q[k]; ok {
-      return true
-    }
-  }
-  return false
+	if r.Method != http.MethodGet && r.Method != http.MethodHead {
+		return true
+	}
+	if r.Header.Get("Authorization") != "" {
+		return true
+	}
+	for _, c := range r.Cookies() {
+		if strings.HasPrefix(c.Name, CookiePrefix) {
+			return true
+		}
+	}
+	q, _ := url.ParseQuery(r.URL.RawQuery)
+	for _, k := range reserved {
+		if _, ok := q[k]; ok {
+			return true
+		}
+	}
+	return false
 }
 
 // Key builds the cache key from the site host, the request path and the allowed query params (q, page).
 // It also returns the normalised query, which is all a cached page may depend on.
 func Key(host string, u *url.URL) (key, query string) {
-  in, _ := url.ParseQuery(u.RawQuery)
-  out := url.Values{}
-  if n, err := strconv.Atoi(in.Get("page")); err == nil && n > 1 {
-    out.Set("page", strconv.Itoa(n))
-  }
-  if q := strings.TrimSpace(in.Get("q")); q != "" {
-    if utf8.RuneCountInString(q) > MaxQueryRunes {
-      q = string([]rune(q)[:MaxQueryRunes])
-    }
-    out.Set("q", q)
-  }
-  query = out.Encode()
-  key = host + u.Path
-  if query != "" {
-    key += "?" + query
-  }
-  return key, query
+	in, _ := url.ParseQuery(u.RawQuery)
+	out := url.Values{}
+	if n, err := strconv.Atoi(in.Get("page")); err == nil && n > 1 {
+		out.Set("page", strconv.Itoa(n))
+	}
+	if q := strings.TrimSpace(in.Get("q")); q != "" {
+		if utf8.RuneCountInString(q) > MaxQueryRunes {
+			q = string([]rune(q)[:MaxQueryRunes])
+		}
+		out.Set("q", q)
+	}
+	query = out.Encode()
+	key = host + u.Path
+	if query != "" {
+		key += "?" + query
+	}
+	return key, query
 }

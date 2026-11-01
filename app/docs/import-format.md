@@ -184,7 +184,38 @@ Used by posts, terms and authors. Every field is optional. A missing or all-null
 `og_title`, `og_description`, `og_image_media` (media key), `twitter_title`, `twitter_description`,
 `twitter_image_media` (media key), `focus_keyphrase`, `breadcrumb_title`, `is_cornerstone` (bool).
 
-Titles and descriptions may use Yoast `%%variables%%`; they are stored as given.
+Titles and descriptions may use Yoast `%%variables%%`; they are stored as given and expanded per request.
+
+How each field is used on the public site (see `docs/themes.md`, `head`, for the full resolution order):
+
+| Field | Effect |
+|---|---|
+| `title`, `description` | Override the type template. Variables are expanded. |
+| `canonical` | Absolute URL or root-relative path. Replaces the self canonical. |
+| `robots_noindex`, `robots_nofollow` | `null` falls back to the type default (`seo.tag_noindex` for tags; otherwise index, follow). |
+| `robots_advanced` | Values such as `noarchive`, `noimageindex`, `nosnippet`. They replace the default `max-snippet:-1, max-image-preview:large, max-video-preview:-1`. |
+| `og_title`, `og_description`, `og_image_media` | Open Graph overrides. Variables are expanded. |
+| `twitter_title`, `twitter_description`, `twitter_image_media` | Emitted as `twitter:*` tags only when set. |
+| `breadcrumb_title` | Replaces the entity's name in breadcrumbs and in the JSON-LD `BreadcrumbList`. |
+| `focus_keyphrase`, `is_cornerstone` | Stored for the editor's SEO panel; not printed. |
+
+**Supported variables:** `%%title%%` `%%sitename%%` `%%sitedesc%%` `%%sep%%` `%%page%%` `%%pagenumber%%`
+`%%pagetotal%%` `%%primary_category%%` `%%category%%` `%%tag%%` `%%term_title%%` `%%term_description%%`
+(`%%category_description%%` and `%%tag_description%%` are aliases) `%%name%%` `%%author_first_name%%`
+`%%author_last_name%%` `%%excerpt%%` `%%excerpt_only%%` `%%date%%` `%%modified%%` `%%currentyear%%`
+`%%currentmonth%%` `%%searchphrase%%` `%%pt_single%%` `%%pt_plural%%`.
+
+- `%%page%%` renders `{sep} Page N of M` only from page 2 on.
+- `%%excerpt%%` is the explicit excerpt. It falls back to the start of the content only when `seo.auto_description`
+  is on. `%%excerpt_only%%` never falls back.
+- `%%name%%`, `%%author_first_name%%` and `%%author_last_name%%` use the first author; first and last name are the
+  display name split at the first space.
+- Unknown variables (for example `%%focuskw%%` or `%%cf_*%%`) render as nothing. After expansion, whitespace is
+  collapsed and leading, trailing or repeated separators are removed.
+
+Videos with a `title`, a thumbnail (`thumbnail_media` or `thumbnail_url`) and an `upload_date` become JSON-LD
+`VideoObject`s. YouTube and Vimeo videos get an `embedUrl` built from `external_id`; others use `url` as
+`contentUrl`. When several rows share a URL, a manually edited one wins over an imported one.
 
 ### comments.ndjson
 
@@ -237,7 +268,7 @@ Reference fields take legacy keys.
 
 | Key | Fields (default) |
 |---|---|
-| `site` | `title` (""), `tagline` (""), `timezone` ("UTC", IANA name), `date_format` ("January 2, 2006", Go layout), `language` ("en") |
+| `site` | `title` (""), `tagline` (""), `timezone` ("UTC", IANA name), `date_format` ("January 2, 2006", Go layout), `language` ("en"; a BCP 47 tag such as `en-IN`, also used for `og:locale`, where a bare `en` becomes `en_US`) |
 | `permalinks` | `post_pattern` ("/{slug}/"; tokens `{slug} {year} {month} {day} {id} {category}`, must contain `{slug}` or `{id}`), `category_base` ("category"), `tag_base` ("tag"), `author_base` ("author"), `trailing_slash` ("always" \| "never"), `date_archives_enabled` (true), `author_archives_enabled` (true), `wpcompat_enabled` (true; the `/?p=` style WordPress URL layer) |
 | `reading` | `home` (null = latest posts, or a page key), `posts_page` (page key or null), `posts_per_page` (10, 1–100), `feed_items` (10, 1–100), `feed_excerpt_only` (false) |
 | `seo` | `separator` ("-"), `title_templates` and `description_templates` (type → template; types `post page category tag author home search 404 date`; given entries override the defaults), `knowledge_graph` (`{type: "organization" \| "person", name, logo_media}`), `social_profiles` (https URLs), `twitter_site`, `default_image_media` (media key), `tag_noindex` (false), `auto_description` (false) |

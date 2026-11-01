@@ -312,8 +312,8 @@ RETURNING (xmax = 0)`
 
 // keyQueries load legacy_key → id maps after each phase. Table names are constants, never input.
 var keyQueries = map[string]string{
-  "authors": `SELECT legacy_key, id FROM authors WHERE legacy_key LIKE $1`,
-  "terms":   `SELECT legacy_key, id FROM terms WHERE legacy_key LIKE $1`,
-  "posts":   `SELECT legacy_key, id FROM posts WHERE legacy_key LIKE $1`,
-  "menus":   `SELECT legacy_key, id FROM menus WHERE legacy_key LIKE $1`,
+	"authors": `SELECT legacy_key, id FROM authors WHERE legacy_key LIKE $1`,
+	"terms":   `SELECT legacy_key, id FROM terms WHERE legacy_key LIKE $1`,
+	"posts":   `SELECT legacy_key, id FROM posts WHERE legacy_key LIKE $1`,
+	"menus":   `SELECT legacy_key, id FROM menus WHERE legacy_key LIKE $1`,
 }

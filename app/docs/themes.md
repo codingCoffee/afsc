@@ -66,12 +66,11 @@ With `base.html`, every page is rendered through it. Page templates only `define
 <!-- base.html -->
 <!doctype html>
 <html lang="{{.Site.Language}}">
-<head><title>{{block "title" .}}{{.Site.Title}}{{end}}</title></head>
+<head><meta charset="utf-8">{{head .}}</head>
 <body class="{{body_class .}}">{{block "content" .}}{{end}}</body>
 </html>
 
 <!-- single.html -->
-{{define "title"}}{{.Post.Title}} | {{.Site.Title}}{{end}}
 {{define "content"}}<article class="{{post_class .Post}}">{{.Post.ContentHTML}}</article>{{end}}
 ```
 
@@ -160,15 +159,18 @@ or `if`.
 | `.Search` | `Query Total` | `search` |
 | `.Pagination` | `Current Total Prev Next Links` | Listing kinds |
 | `.FeedURL` | string | `home`, `posts_page`, category, tag and author archives |
+| `.Head` | `Title Description Canonical Robots Tags` | Always on the live site. The resolved SEO values that `head` prints (see below). |
 
 - **`Post`.**
   - Identity and text: `ID WPID Type Slug Title Excerpt ContentHTML ContentText Template Sticky CommentStatus`.
   - Dates and links: `PublishedAt UpdatedAt URL FeedGUID`.
   - Teaser, on listings: `Teaser TeaserText HasMore`.
   - Relations: `Authors Categories Tags Primary Ancestors FeaturedMedia`.
+  - `Breadcrumb`: the SEO breadcrumb title, empty when unset.
   - Search only: `Snippet`, the matched text with `<b>` highlights.
-- **`Term`:** `ID WPID Taxonomy Slug Name Description Path Ancestors URL`.
-- **`Author`:** `ID WPID Slug Name Bio Website Social Avatar URL`.
+- **`Term`:** `ID WPID Taxonomy Slug Name Description Path Ancestors URL Breadcrumb`.
+- **`Author`:** `ID WPID Slug Name Bio Website Social Avatar URL Key Breadcrumb`. `Key` is the stable identity
+  (legacy key, else `afsc:author:{id}`) behind the author's JSON-LD `@id`.
 - **`Media`:** `ID WPID Filename Version Mime Width Height Alt Caption URL`. `URL` is the absolute URL of the
   original; use `image` or `image_url` for sized variants.
 
@@ -176,6 +178,63 @@ or `if`.
 The class funcs use it, so CSS written for WordPress ids keeps working.
 
 ## Template functions
+
+### head
+
+`head .` prints everything a page needs inside `<head>` except `<meta charset>` and the viewport. Call it once, in
+`base.html`. It outputs, in order:
+
+- `<title>`
+- `meta description` (omitted when empty), `meta robots`, `link rel=canonical`, and `link rel=prev/next` on paginated
+  listings
+- Open Graph (`og:locale og:type og:title og:description og:url og:site_name og:image` with width, height and type;
+  `article:published_time article:modified_time article:author` on posts)
+- Twitter (`twitter:card`, `twitter:site`, and title, description and image only when an editor overrode them)
+- one `<script type="application/ld+json">` with the schema.org `@graph`
+- the theme's `assets` from theme.json: `.css` as stylesheets, `.js` as scripts with `defer`/`async`
+- RSS `link rel=alternate` for the site feed, plus the archive feed on category, tag and author archives
+
+Add your own tags after it. Don't print another `<title>` or robots tag.
+
+```html
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+{{head .}}
+<link rel="preconnect" href="https://fonts.example.com">
+</head>
+```
+
+**How values are chosen (§8.1).**
+
+| Value | Order |
+|---|---|
+| Title | entity SEO title → `seo.title_templates[type]` → built-in template → site title |
+| Description | entity SEO description → `seo.description_templates[type]` → empty. With `seo.auto_description` on: the excerpt (posts), term description or author bio, cut to 156 characters. |
+| Canonical | entity canonical (absolute, or root-relative) → the page's own URL. Paginated archives point at themselves. None on search and 404 pages. |
+| Robots | entity noindex/nofollow → type default (`seo.tag_noindex` for tags) → `index, follow, max-snippet:-1, max-image-preview:large, max-video-preview:-1`. An entity's `robots_advanced` list replaces the `max-*` part. Search, 404 and 410 pages are always `noindex, follow`. |
+| OG/Twitter image | entity override → featured image → first image in the content → `seo.default_image_media`. The original file is used, as Yoast does. |
+
+`type` is `post`, `page` (pages, the static front page and the posts page), `category`, `tag`, `author`, `home`,
+`search`, `404` (also 410) or `date`. Templates use Yoast variables; see `docs/import-format.md`.
+
+Empty category, tag and author archives return 404.
+
+`.Head` holds the resolved `Title`, `Description`, `Canonical` and `Robots` if a template needs them, for example
+for share links. Under `afsc theme check` the fixtures get a `.Head` built from default settings.
+
+**JSON-LD.** The graph has stable `@id`s, so other nodes and later tooling can reference them:
+
+| Node | `@id` | On |
+|---|---|---|
+| `Organization` (or `Person`, by `seo.knowledge_graph.type`) | `{site}/#organization` | every page |
+| `WebSite` with a `SearchAction` | `{site}/#website` | every page |
+| `WebPage`, `CollectionPage`, `ProfilePage` or `SearchResultsPage` | the canonical URL | every page but 404 |
+| `ImageObject` | `{url}#primaryimage` | posts and pages with an image |
+| `BreadcrumbList` | `{url}#breadcrumb` | pages with more than the Home crumb |
+| `BlogPosting` | `{url}#article` | posts |
+| `Person` | `{site}/#/schema/person/{hash}` | post authors and author archives |
+| `VideoObject` | `{url}#video-{n}` | posts and pages with videos that have a name, thumbnail and upload date |
 
 ### body_class
 
@@ -254,9 +313,14 @@ there is only one page. For custom markup, use `.Pagination.Links` (`N URL Curre
 `breadcrumbs .` gives a list of crumbs, each with a `Name` and a `URL`. The first crumb is Home, and the last crumb (the
 current page) has an empty `URL`.
 
-- **Posts** go through their primary category and its parents.
+- **Posts** go through their primary category and its parents. Without a primary category, the oldest category
+  (lowest id) is used. `%%primary_category%%` and `{category}` permalinks use the same choice.
 - **Pages** go through their parent pages.
 - **Date archives** show the year, then the month.
+- **Breadcrumb titles.** A post, page, term or author with an SEO `breadcrumb_title` shows that instead of its name,
+  wherever it appears in the trail.
+
+The JSON-LD `BreadcrumbList` is built from the same crumbs.
 
 ```html
 <ol>{{range breadcrumbs .}}<li>{{if .URL}}<a href="{{.URL}}">{{.Name}}</a>{{else}}{{.Name}}{{end}}</li>{{end}}</ol>

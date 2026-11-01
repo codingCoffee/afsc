@@ -3,15 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>{{block "title" .}}{{.Site.Title}}{{with .Site.Tagline}} – {{.}}{{end}}{{end}}</title>
-{{- if .Request.NoIndex}}
-<meta name="robots" content="noindex">
-{{- end}}
-<link rel="stylesheet" href="{{asset "style.css"}}">
-<link rel="alternate" type="application/rss+xml" title="{{.Site.Title}}" href="{{url "/feed/"}}">
-{{- if and .FeedURL (ne .FeedURL (url "/feed/"))}}
-<link rel="alternate" type="application/rss+xml" title="{{.Site.Title}} – {{t "feed"}}" href="{{.FeedURL}}">
-{{- end}}
+{{head .}}
 </head>
 <body class="{{body_class .}}">
 <a class="skip-link screen-reader-text" href="#content">{{t "skip"}}</a>
