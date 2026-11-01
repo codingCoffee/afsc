@@ -1,3 +1,5 @@
+import type { Page } from '@/composables/useAuth'
+
 // JSON shapes of the admin API. docs/admin-api.md lists the routes; keep both in sync with the Go handlers.
 
 export type PostType = 'post' | 'page'
@@ -214,6 +216,16 @@ export interface Dashboard {
   top_404s: { path: string, hits: number, last_seen: string }[]
   counts: Record<PostStatus, number>
   csp_report_only: boolean
+  pending_comments?: { count: number, latest: DashComment[] } // only with comments.moderate
+}
+
+export interface DashComment {
+  id: number
+  post_id: number
+  post_title: string
+  author_name: string
+  excerpt: string
+  created_at: string
 }
 
 export interface SeoResolveInput {
@@ -296,3 +308,41 @@ export interface RedirectTestResult { path: string, canonical: string, matched: 
 export interface CsvLineError { line: number, field?: string, message: string }
 export interface RedirectImportReport { created: number, updated: number, errors: CsvLineError[], warnings: CsvLineError[] }
 export interface NotFoundRow { path: string, hits: number, first_seen: string, last_seen: string, last_referrer: string }
+
+export type CommentStatus = 'pending' | 'approved' | 'spam' | 'trash'
+export type CommentAction = 'approve' | 'unapprove' | 'spam' | 'not_spam' | 'trash' | 'restore' | 'delete'
+
+export interface SpamReason { check: string, delta: number, detail?: string }
+
+export interface AdminComment {
+  id: number
+  post_id: number
+  post_title: string
+  post_type: PostType
+  post_url: string // empty when the post isn't public
+  parent_id: number | null
+  parent_author: string | null
+  author_name: string
+  author_email: string
+  author_url: string
+  ip: string | null // cleared after discussion.comment_ip_retention_days
+  user_agent: string | null
+  staff: boolean // posted from the admin
+  body: string // plain text
+  status: CommentStatus
+  spam_score: number | null
+  spam_reasons: SpamReason[]
+  created_at: string
+}
+
+export interface CommentList extends Page<AdminComment> {
+  counts: Record<CommentStatus, number>
+}
+
+export interface CommentChange { id: number, post_id: number, from: CommentStatus, to: CommentStatus | 'deleted' }
+
+export type BlocklistKind = 'keyword' | 'domain' | 'ip' | 'cidr' | 'email'
+export interface SpamBlocklist {
+  entries: Record<BlocklistKind, string[]>
+  classifier: { spam: number, ham: number, min: number, active: boolean }
+}

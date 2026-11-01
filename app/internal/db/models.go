@@ -54,6 +54,7 @@ type Comment struct {
 	LegacyKey   *string       `json:"legacy_key"`
 	CreatedAt   time.Time     `json:"created_at"`
 	UpdatedAt   time.Time     `json:"updated_at"`
+	BodyHash    []byte        `json:"body_hash"`
 }
 
 type Job struct {
@@ -301,6 +302,24 @@ type SetupToken struct {
 	ID        int32     `json:"id"`
 	TokenHash []byte    `json:"token_hash"`
 	CreatedAt time.Time `json:"created_at"`
+}
+
+type SpamArchive struct {
+	CommentKey string    `json:"comment_key"`
+	Tokens     []string  `json:"tokens"`
+	ArchivedAt time.Time `json:"archived_at"`
+}
+
+type SpamBlocklist struct {
+	Kind      string    `json:"kind"`
+	Value     string    `json:"value"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
+type SpamToken struct {
+	Token string `json:"token"`
+	Spam  int32  `json:"spam"`
+	Ham   int32  `json:"ham"`
 }
 
 type Term struct {

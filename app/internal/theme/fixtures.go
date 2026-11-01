@@ -75,6 +75,39 @@ func fixturePost(n int, typ string, full bool) *Post {
 	return p
 }
 
+// fixtureComments is a closed, empty section when sparse; full has a three-level thread, a second page, a reply
+// form and a pending notice.
+func fixtureComments(p *Post, full bool) *Comments {
+	if !full {
+		return &Comments{}
+	}
+	at := time.Date(2021, 3, 6, 10, 0, 0, 0, time.UTC)
+	c := func(id int64, depth int, name, url, body string) *Comment {
+		return &Comment{ID: id, Anchor: "comment-" + strconv.FormatInt(id, 10), AuthorName: name, AuthorURL: url,
+			BodyHTML: template.HTML(body), Date: at, Depth: depth,
+			ReplyURL: p.URL + "?replytocom=" + strconv.FormatInt(id, 10) + "#respond"}
+	}
+	leaf := c(3, 3, "Commenter A", "", "Third level.")
+	leaf.ReplyURL = ""
+	mid := c(2, 2, "Author A", "", "Thanks!")
+	mid.Children = []*Comment{leaf}
+	root := c(1, 1, "Commenter A", "https://example.org", `Nice post, see <a href="https://example.org/x" rel="nofollow ugc noopener">https://example.org/x</a>`)
+	root.Children = []*Comment{mid}
+	notice := c(9, 1, "New Visitor", "", "Awaiting moderation.")
+	notice.Pending, notice.ReplyURL = true, ""
+	return &Comments{
+		Open: true, Total: 4, Threads: []*Comment{root, c(4, 1, "Visitor C", "", "Second thread.")},
+		Pagination: NewPagination(1, 2, func(n int) string {
+			if n == 1 {
+				return p.URL + "#comments"
+			}
+			return p.URL + "?cpage=" + strconv.Itoa(n) + "#comments"
+		}),
+		Form:   &CommentForm{Action: fixtureBase + "/comments", PostID: p.ID, Token: "fixture-token", Honeypot: "website_url", ReplyTo: root, CancelURL: p.URL + "#respond"},
+		Notice: notice,
+	}
+}
+
 func fixturePosts(full bool) []*Post {
 	if !full {
 		return nil
@@ -113,9 +146,11 @@ func Fixture(kind string, full bool) *PageData {
 	case KindFrontPage, KindPage:
 		d.Post = fixturePost(5, "page", full)
 		d.Request.Path, d.Request.URL = "/"+d.Post.Slug+"/", d.Post.URL
+		d.Comments = fixtureComments(d.Post, full)
 	case KindSingle:
 		d.Post = fixturePost(1, "post", full)
 		d.Request.Path, d.Request.URL = "/"+d.Post.Slug+"/", d.Post.URL
+		d.Comments = fixtureComments(d.Post, full)
 	case KindCategory:
 		_, d.Term, _ = fixtureTerms(full)
 		listing("/category/markets/stocks/", true)

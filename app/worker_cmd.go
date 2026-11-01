@@ -19,6 +19,7 @@ import (
 	"afsc/internal/ratelimit"
 	"afsc/internal/settings"
 	"afsc/internal/site"
+	"afsc/internal/spam"
 )
 
 var jobConcurrencyFlag = &cli.IntFlag{Name: "job-concurrency", Value: 4, Usage: "jobs run at once by this process",
@@ -72,6 +73,8 @@ var jobsSchedules = []jobs.Schedule{
 	{Kind: "not_found.prune", Every: 24 * time.Hour},
 	{Kind: "auth.prune", Every: 24 * time.Hour},
 	{Kind: "jobs.prune", Every: 24 * time.Hour},
+	{Kind: "spam.retrain", Every: 24 * time.Hour},
+	{Kind: "comments.retention", Every: 24 * time.Hour},
 }
 
 type jobsRunner struct {
@@ -99,6 +102,21 @@ func newJobsRunner(pool *pgxpool.Pool, pub *site.Site, baseURL string, concurren
 	r.worker.Handle("auth.prune", func(ctx context.Context, _ json.RawMessage) error { return jobsAuthPrune(ctx, pool) })
 	r.worker.Handle("jobs.prune", func(ctx context.Context, _ json.RawMessage) error {
 		_, err := jobs.Prune(ctx, pool, 7*24*time.Hour)
+		return err
+	})
+	r.worker.Handle("spam.retrain", func(ctx context.Context, _ json.RawMessage) error {
+		n, err := spam.Retrain(ctx, pool)
+		if err == nil {
+			log.Printf("jobs: spam classifier retrained on %d spam and %d ham comments", n.Spam, n.Ham)
+		}
+		return err
+	})
+	r.worker.Handle("comments.retention", func(ctx context.Context, _ json.RawMessage) error {
+		d := pub.Settings().Discussion
+		res, err := spam.Retain(ctx, pool, time.Now(), d.SpamRetentionDays, d.CommentIPRetentionDays)
+		if res.SpamDeleted > 0 || res.IPCleared > 0 {
+			log.Printf("jobs: comment retention deleted %d spam, cleared IP/UA on %d comments", res.SpamDeleted, res.IPCleared)
+		}
 		return err
 	})
 	r.worker.Handle(indexnow.Kind, func(ctx context.Context, p json.RawMessage) error { return r.pinger.Handle(ctx, p) })

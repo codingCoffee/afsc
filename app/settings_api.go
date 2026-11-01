@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/labstack/echo/v5"
 
 	"afsc/internal/audit"
@@ -348,6 +349,14 @@ func (s *settingsAPI) dashboard(c *echo.Context) error {
 	}
 	out["top_404s"] = top
 
+	if authz.Can(role, authz.ModerateComments) {
+		pc, err := s.pendingComments(c)
+		if err != nil {
+			return err
+		}
+		out["pending_comments"] = pc
+	}
+
 	counts := map[string]int64{"draft": 0, "pending": 0, "scheduled": 0, "published": 0, "private": 0, "trash": 0}
 	rows, err := s.d.pool.Query(ctx, `SELECT p.status, count(*) FROM posts p WHERE $2 OR `+dashOwn+` GROUP BY p.status`,
 		authorID, all)
@@ -368,6 +377,41 @@ func (s *settingsAPI) dashboard(c *echo.Context) error {
 	}
 	out["counts"] = counts
 	return c.JSON(http.StatusOK, out)
+}
+
+type dashComment struct {
+	ID         int64     `json:"id"`
+	PostID     int64     `json:"post_id"`
+	PostTitle  string    `json:"post_title"`
+	AuthorName string    `json:"author_name"`
+	Excerpt    string    `json:"excerpt"`
+	CreatedAt  time.Time `json:"created_at"`
+}
+
+type dashPending struct {
+	Count  int64         `json:"count"`
+	Latest []dashComment `json:"latest"`
+}
+
+func (s *settingsAPI) pendingComments(c *echo.Context) (*dashPending, error) {
+	ctx := c.Request().Context()
+	out := &dashPending{Latest: []dashComment{}}
+	if err := s.d.pool.QueryRow(ctx, `SELECT count(*) FROM comments WHERE status = 'pending'`).Scan(&out.Count); err != nil {
+		return nil, err
+	}
+	rows, err := s.d.pool.Query(ctx, `
+SELECT c.id, c.post_id, p.title, c.author_name, left(c.body, 140), c.created_at
+FROM comments c JOIN posts p ON p.id = c.post_id
+WHERE c.status = 'pending' ORDER BY c.created_at DESC, c.id DESC LIMIT 5`)
+	if err != nil {
+		return nil, err
+	}
+	var r dashComment
+	_, err = pgx.ForEachRow(rows, []any{&r.ID, &r.PostID, &r.PostTitle, &r.AuthorName, &r.Excerpt, &r.CreatedAt}, func() error {
+		out.Latest = append(out.Latest, r)
+		return nil
+	})
+	return out, err
 }
 
 func (s *settingsAPI) dashPosts(c *echo.Context, sql string, all bool, role string, args ...any) ([]dashPost, error) {

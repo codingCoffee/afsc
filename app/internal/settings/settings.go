@@ -123,6 +123,10 @@ type Discussion struct {
 	ThreadDepth            int  `json:"thread_depth"`
 	CommentIPRetentionDays int  `json:"comment_ip_retention_days"`
 	SpamRetentionDays      int  `json:"spam_retention_days"`
+	CommentsPerPage        int  `json:"comments_per_page"` // top-level threads per page; 0 shows all
+	SpamThreshold          int  `json:"spam_threshold"`
+	ModerationThreshold    int  `json:"moderation_threshold"`
+	TrustedAutoApprove     bool `json:"trusted_auto_approve"`
 }
 
 // Media holds upload size limits in MB per file class (§7.4).
@@ -201,7 +205,8 @@ func Defaults() All {
 			Sitemaps:             Sitemaps{PageSize: 1000},
 			NotFound:             NotFound{NoisePatterns: DefaultNoisePatterns(), RetentionDays: 90},
 		},
-		Discussion:    Discussion{CommentsEnabled: true, ThreadDepth: 3, CommentIPRetentionDays: 90, SpamRetentionDays: 30},
+		Discussion: Discussion{CommentsEnabled: true, ThreadDepth: 3, CommentIPRetentionDays: 90, SpamRetentionDays: 30,
+			CommentsPerPage: 50, SpamThreshold: 6, ModerationThreshold: 2, TrustedAutoApprove: true},
 		Cache:         Cache{PageTTLSeconds: 60},
 		Media:         Media{MaxImageMB: 20, MaxVideoMB: 500, MaxAudioMB: 50, MaxPDFMB: 50},
 		Security:      Security{ExtraCSPHosts: map[string][]string{}, HSTS: true},
@@ -398,6 +403,15 @@ func (a All) Validate() error {
 	if d := a.Discussion.SpamRetentionDays; d < 1 || d > 3650 {
 		bad("discussion.spam_retention_days: must be 1-3650")
 	}
+	if n := a.Discussion.CommentsPerPage; n < 0 || n > 500 {
+		bad("discussion.comments_per_page: must be 0 (all) to 500")
+	}
+	if n := a.Discussion.SpamThreshold; n < 1 || n > 100 {
+		bad("discussion.spam_threshold: must be 1-100")
+	}
+	if n := a.Discussion.ModerationThreshold; n < 0 || n >= a.Discussion.SpamThreshold {
+		bad("discussion.moderation_threshold: must be 0 or more and below spam_threshold")
+	}
 	for name, mb := range map[string]int{"max_image_mb": a.Media.MaxImageMB, "max_video_mb": a.Media.MaxVideoMB,
 		"max_audio_mb": a.Media.MaxAudioMB, "max_pdf_mb": a.Media.MaxPDFMB} {
 		if mb < 1 || mb > 4096 {
@@ -453,4 +467,13 @@ var RefKind = map[string]string{
 	"reading.posts_page":             "post",
 	"seo.knowledge_graph.logo_media": "media",
 	"seo.default_image_media":        "media",
+}
+
+// OpenFor reports whether a post accepts new comments: comments are on globally, the post's comment_status is
+// open and, with close_after_days set, the post was published within that many days.
+func (d Discussion) OpenFor(commentStatus string, publishedAt *time.Time, now time.Time) bool {
+	if !d.CommentsEnabled || commentStatus != "open" {
+		return false
+	}
+	return d.CloseAfterDays == 0 || (publishedAt != nil && now.Before(publishedAt.AddDate(0, 0, d.CloseAfterDays)))
 }

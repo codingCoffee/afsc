@@ -248,11 +248,14 @@ const sqlUpsertComments = `
 INSERT INTO comments (legacy_key, post_id, parent_id, author_name, author_email, author_url, user_id, ip,
                       user_agent, body, status, created_at, updated_at)
 SELECT s.doc->>'legacy_key', (s.doc->>'post_id')::bigint, p.id, s.doc->>'author_name', s.doc->>'author_email',
-       s.doc->>'author_url', (s.doc->>'user_id')::uuid, (s.doc->>'ip')::inet, s.doc->>'user_agent',
+       s.doc->>'author_url', (s.doc->>'user_id')::uuid,
+       CASE WHEN (s.doc->>'created_at')::timestamptz >= now() - make_interval(days => $2) THEN (s.doc->>'ip')::inet END,
+       CASE WHEN (s.doc->>'created_at')::timestamptz >= now() - make_interval(days => $2) THEN s.doc->>'user_agent' END,
        s.doc->>'body', s.doc->>'status', (s.doc->>'created_at')::timestamptz, (s.doc->>'created_at')::timestamptz
 FROM stage_comments s
 LEFT JOIN comments p ON p.legacy_key = s.doc->>'parent'
 WHERE (s.doc->>'depth')::int = $1
+  AND NOT EXISTS (SELECT 1 FROM spam_archive a WHERE a.comment_key = s.doc->>'legacy_key')
 ON CONFLICT (legacy_key) DO UPDATE SET
   post_id = EXCLUDED.post_id, parent_id = EXCLUDED.parent_id, author_name = EXCLUDED.author_name,
   author_email = EXCLUDED.author_email, author_url = EXCLUDED.author_url, user_id = EXCLUDED.user_id,
@@ -264,6 +267,18 @@ WHERE (comments.post_id, comments.parent_id, comments.author_name, comments.auth
       (EXCLUDED.post_id, EXCLUDED.parent_id, EXCLUDED.author_name, EXCLUDED.author_email, EXCLUDED.author_url,
        EXCLUDED.user_id, EXCLUDED.ip, EXCLUDED.user_agent, EXCLUDED.body, EXCLUDED.status, EXCLUDED.created_at)
 RETURNING (xmax = 0)`
+
+// sqlIPRetentionDays is the comment IP/UA retention window; imported IPs older than it aren't stored (Q2).
+const sqlIPRetentionDays = `
+SELECT coalesce((SELECT (value->>'comment_ip_retention_days')::int FROM settings WHERE key = 'discussion'), $1)`
+
+// sqlBumpCommentSeq moves the comment id sequence past the largest imported WordPress comment id, so the
+// #comment-<id> anchors of new comments never collide with imported ones (Q7).
+const sqlBumpCommentSeq = `
+SELECT setval('comments_id_seq', greatest(s.last_value, x.m))
+FROM comments_id_seq s,
+     (SELECT max(substring(legacy_key FROM ':comment:([0-9]{1,18})$')::bigint) AS m FROM comments WHERE legacy_key LIKE $1) x
+WHERE x.m IS NOT NULL`
 
 const sqlUpsertMenus = `
 INSERT INTO menus (legacy_key, slug, name)

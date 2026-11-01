@@ -8,6 +8,7 @@ import {
   Gauge,
   Image,
   ListTree,
+  MessageSquare,
   ScrollText,
   Search,
   Settings,
@@ -39,6 +40,7 @@ export const navGroups: NavGroup[] = [
       { label: 'Posts', to: '/posts', icon: FileText, cap: 'posts.edit_own' },
       { label: 'Pages', to: '/pages', icon: Files, cap: 'pages.edit' },
       { label: 'Media', to: '/media', icon: Image, cap: 'posts.edit_own' },
+      { label: 'Comments', to: '/comments', icon: MessageSquare, cap: 'comments.moderate' },
     ],
   },
   {

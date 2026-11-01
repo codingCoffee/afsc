@@ -25,6 +25,10 @@ func (st *Site) renderPage(r *http.Request, snap *snapshot, res Result, query st
 		st.nf.add(r.URL.Path, r.Referer(), st.now())
 	}
 	d.Request.Query = query
+	personal, err := st.loadComments(r.Context(), snap, r, d, query)
+	if err != nil {
+		return nil, err
+	}
 	if err := st.buildHead(r.Context(), snap, d); err != nil {
 		return nil, err
 	}
@@ -36,6 +40,9 @@ func (st *Site) renderPage(r *http.Request, snap *snapshot, res Result, query st
 	if d.Kind == theme.KindSearch {
 		h.Set("Cache-Control", "private, no-store")
 		h.Set("X-Robots-Tag", "noindex")
+	}
+	if personal {
+		h.Set("Cache-Control", "private, no-store")
 	}
 	return &response{status: status, header: h, body: buf.Bytes()}, nil
 }

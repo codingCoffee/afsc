@@ -4,10 +4,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"afsc/internal/content"
+	"afsc/internal/jobs"
 	"afsc/internal/storage"
 	"afsc/internal/theme"
 )
@@ -99,6 +101,12 @@ func Run(ctx context.Context, o Options) (*Report, error) {
 	if o.Prune {
 		if err := w.prune(ctx, o.Confirm); err != nil {
 			return rep, fmt.Errorf("prune: %w", err)
+		}
+	}
+	if !o.DryRun {
+		// labelled imported comments seed the classifier (§17)
+		if err := jobs.Enqueue(ctx, conn, "spam.retrain", nil, time.Time{}); err != nil {
+			return rep, fmt.Errorf("enqueue spam.retrain: %w", err)
 		}
 	}
 	return rep, nil

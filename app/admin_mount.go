@@ -34,5 +34,6 @@ func mountAdmin(e *echo.Echo, h *authHandler, d *adminDeps, mw ...echo.Middlewar
 	h.registerTaxonomy(api, d)
 	h.registerSettings(api, d)
 	h.registerSEO(api, d)
+	h.registerComments(api, d)
 	return api
 }

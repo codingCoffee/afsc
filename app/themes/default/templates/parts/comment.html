@@ -1,0 +1,17 @@
+<li id="{{.Anchor}}" class="comment depth-{{.Depth}}{{if .Pending}} comment-pending{{end}}">
+  <article class="comment-body">
+    <footer class="comment-meta">
+      {{avatar . "thumbnail"}}
+      <b class="comment-author">{{if .AuthorURL}}<a href="{{.AuthorURL}}" rel="nofollow ugc noopener" class="url">{{.AuthorName}}</a>{{else}}{{.AuthorName}}{{end}}</b>
+      <time datetime="{{date .Date "2006-01-02T15:04:05Z07:00"}}">{{date .Date}}</time>
+      {{- if .Pending}}<em class="comment-awaiting-moderation">{{t "comment_awaiting"}}</em>{{end}}
+    </footer>
+    <div class="comment-content"><p>{{.BodyHTML}}</p></div>
+    {{- with .ReplyURL}}
+    <a class="comment-reply-link" rel="nofollow" href="{{.}}">{{t "reply"}}</a>
+    {{- end}}
+  </article>
+  {{- with .Children}}
+  <ol class="children">{{range .}}{{template "parts/comment.html" .}}{{end}}</ol>
+  {{- end}}
+</li>

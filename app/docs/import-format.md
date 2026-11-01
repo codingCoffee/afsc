@@ -232,8 +232,15 @@ Videos with a `title`, a thumbnail (`thumbnail_media` or `thumbnail_url`) and an
 | `ip` | string | IPv4 or IPv6, or empty. |
 | `user_agent` | string | |
 | `body` | string | Plain text, required. |
-| `status` | `pending` \| `approved` \| `spam` \| `trash` | Labelled spam/approved comments will seed the spam classifier (M4). |
+| `status` | `pending` \| `approved` \| `spam` \| `trash` | Labelled spam/approved comments seed the spam classifier: every non-dry-run import queues a `spam.retrain` job. |
 | `created_at` | time | Required. |
+
+- `ip` and `user_agent` are dropped for comments older than `discussion.comment_ip_retention_days`, so a re-import
+  doesn't bring back data the retention job has cleared.
+- Spam deleted by the retention job (or permanently by a moderator) is remembered in `spam_archive` by legacy key.
+  Re-imports skip those records, and replies to them import as top-level comments.
+- After import, the comment id sequence is moved past the largest `<source>:comment:<N>`, because the public
+  `#comment-<N>` anchors of imported comments use `N`.
 
 ### menus.ndjson
 
@@ -281,7 +288,7 @@ Reference fields take legacy keys.
 | `permalinks` | `post_pattern` ("/{slug}/"; tokens `{slug} {year} {month} {day} {id} {category}`, must contain `{slug}` or `{id}`), `category_base` ("category"), `tag_base` ("tag"), `author_base` ("author"), `trailing_slash` ("always" \| "never"), `date_archives_enabled` (true), `author_archives_enabled` (true), `wpcompat_enabled` (true; the `/?p=` style WordPress URL layer) |
 | `reading` | `home` (null = latest posts, or a page key), `posts_page` (page key or null), `posts_per_page` (10, 1–100), `feed_items` (10, 1–100), `feed_excerpt_only` (false) |
 | `seo` | `separator` ("-"), `title_templates` and `description_templates` (type → template; types `post page category tag author home search 404 date`; given entries override the defaults), `knowledge_graph` (`{type: "organization" \| "person", name, logo_media}`), `social_profiles` (https URLs), `twitter_site`, `default_image_media` (media key), `tag_noindex` (false), `auto_description` (false), `robots_txt` ("" = allow all plus the `Sitemap:` line; otherwise served verbatim as `/robots.txt`), `llms_txt` (`{mode: "off" \| "auto" \| "custom", body: ""}`; `custom` needs a `body`), `sitemaps` (`{page_size: 1000}`, 1–50000 URLs per sitemap file), `indexnow` (`{enabled: false, key: ""}`; the key is 8–128 letters, digits or dashes and is required when enabled), `not_found` (`{noise_patterns: ["*.php", "/.env*", "/.git/*", "/wp-admin/*", "*.asp*", "/cgi-bin/*"], retention_days: 90}`; see below) |
-| `discussion` | `comments_enabled` (true), `close_after_days` (0 = never), `thread_depth` (3, 1–10) |
+| `discussion` | `comments_enabled` (true), `close_after_days` (0 = never), `thread_depth` (3, 1–10), `comment_ip_retention_days` (90, 1–3650), `spam_retention_days` (30, 1–3650), `comments_per_page` (50, 0 = all, up to 500 top-level threads), `spam_threshold` (6, 1–100), `moderation_threshold` (2, below `spam_threshold`), `trusted_auto_approve` (true) |
 | `cache` | `page_ttl_seconds` (60, 0–86400; how long browsers, CDNs and the in-process cache keep public pages; 0 = `no-cache`, nothing kept in-process) |
 
 The `seo` keys `robots_txt`, `llms_txt`, `sitemaps`, `indexnow` and `not_found` were added in M2. Bundles without

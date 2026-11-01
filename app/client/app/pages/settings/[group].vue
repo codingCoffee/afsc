@@ -6,6 +6,7 @@ import { computed, ref, watch } from 'vue'
 import { toast } from 'vue-sonner'
 import { settingsGroups, useCspReportOnly } from '@/components/settings/groups'
 import SettingsField from '@/components/settings/SettingsField.vue'
+import SpamBlocklist from '@/components/settings/SpamBlocklist.vue'
 import { API } from '@/composables/useAuth'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
@@ -182,6 +183,7 @@ const unmatched = computed(() => {
             </Button>
           </div>
         </form>
+        <SpamBlocklist v-if="data && desc?.group === 'discussion'" class="mt-8" />
       </div>
     </div>
   </div>

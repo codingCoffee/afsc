@@ -1,4 +1,4 @@
-# Admin API (M3)
+# Admin API (M3, M4)
 
 Every route is under `/admin/api/v1`, registered through `route()` with one capability (see `internal/authz`).
 Requests carry `Authorization: Bearer <access token>`. Every non-GET request must send
@@ -118,3 +118,25 @@ Home SEO is `entity_id` 0 and applies to the latest-posts home; a static front p
 compares the title override (else the post title), `duplicate_description` the description override, and
 `keyphrase_used` the focus keyphrase with every post that isn't trashed. Suggestions are the top 10 published posts
 matching any word of the title or keyphrase.
+
+## Comments and spam (M4c)
+| Method | Path | Cap | Notes |
+|---|---|---|---|
+| GET | /comments | comments.moderate | `?status=pending|approved|spam|trash` (default pending)`&post_id=&q=&page=&page_size=` → `CommentList`, newest first. `q` matches body, name and email (substring) or the exact IP. `counts` is per status, honouring `post_id` only. |
+| POST | /comments/bulk | comments.moderate | `{ids: number[] (1-500), action}` → `{changed: CommentChange[]}`. Actions: `approve`, `unapprove` (→ pending), `spam`, `not_spam` (→ approved), `trash`, `restore` (→ pending), `delete`. Comments already in the target status are skipped. `delete` is permanent, only for spam and trash (409 `code: "not_deletable"` otherwise), and writes one `comment.delete` audit entry per comment. |
+| POST | /comments/:id/reply | comments.moderate | `{body}` (2-5000 chars) → 201 `{id, post_id, parent_id, status: "approved"}`. Posted as the signed-in user (linked author name, else display name, else username). It skips the spam pipeline and the closed check, and replies past `thread_depth` attach to the deepest allowed ancestor. |
+| GET | /spam/blocklist | settings.manage | `SpamBlocklist` |
+| PUT | /spam/blocklist | settings.manage | `{entries: {kind: string[]}}` replaces the whole list → `SpamBlocklist`. Kinds `keyword domain ip cidr email`; values are trimmed and normalised (lowercase, masked CIDR, unmapped IP), ≤200 bytes each, ≤5000 in total; 400 `field: "entries.<kind>[i]"`. Audit-logged as `spam.blocklist` with `{added, removed}`. |
+| POST | /spam/retrain | settings.manage | Queues `spam.retrain` → 202 `{queued: true}` |
+
+- **Training.** Every status change trains the classifier: approved is ham, spam is spam, and pending and trash are
+  unlabelled.
+- **Purges.** A change into or out of `approved`, and every staff reply, purges the post's cached page.
+- **Delete.** Deleting spam keeps its tokens in `spam_archive`, so the classifier doesn't forget it.
+- **Classifier stats.** `classifier` in `SpamBlocklist` is `{spam, ham, min: 200, active}`. The classifier only
+  scores once it has `min` messages of each label.
+- **Thresholds and retention** are in the `discussion` settings group: `spam_threshold` (6),
+  `moderation_threshold` (2, below the spam threshold), `trusted_auto_approve` (true), `comments_per_page` (50,
+  0 = all), `comment_ip_retention_days` (90) and `spam_retention_days` (30).
+
+`GET /dashboard` adds `pending_comments: {count, latest: DashComment[5]}` for roles with `comments.moderate`.

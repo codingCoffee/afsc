@@ -16,6 +16,7 @@ import (
 	"afsc/internal/media"
 	"afsc/internal/pagecache"
 	"afsc/internal/settings"
+	"afsc/internal/spam"
 	"afsc/internal/storage"
 	"afsc/internal/theme"
 )
@@ -33,6 +34,8 @@ type Config struct {
 	CacheBytes int64
 	// PreviewKey signs /?preview= tokens (see PreviewKey); empty means a random per-process key.
 	PreviewKey []byte
+	// CommentSigner signs comment form tokens and notice cookies; nil means a random per-process key.
+	CommentSigner *spam.Signer
 }
 
 // maxEntryBytes caps a single cached page.
@@ -58,6 +61,9 @@ type Site struct {
 func New(ctx context.Context, cfg Config) (*Site, error) {
 	if cfg.Logf == nil {
 		cfg.Logf = func(string, ...any) {}
+	}
+	if cfg.CommentSigner == nil {
+		cfg.CommentSigner, _ = spam.NewSigner(nil)
 	}
 	st := &Site{cfg: cfg, db: cfg.Pool, lk: &pgLookup{db: cfg.Pool}, nf: newNotFoundLog(), rh: newRedirectHits(),
 		now: time.Now}
@@ -131,6 +137,9 @@ func (st *Site) Settings() *settings.All {
 }
 
 func (st *Site) BaseURL() string { return st.cfg.BaseURL }
+
+// CommentSigner signs comment form tokens; POST /comments verifies them with the same key.
+func (st *Site) CommentSigner() *spam.Signer { return st.cfg.CommentSigner }
 
 func (st *Site) Menu(loc string) ([]*theme.MenuItem, error) {
 	return st.snap.Load().menus[loc], nil

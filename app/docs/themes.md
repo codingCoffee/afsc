@@ -125,6 +125,8 @@ Defaults shown; the bases, post pattern and trailing slash come from the `permal
 - **Precedence.** On the same path, date archives win, then category, tag and author bases, then pages, then posts.
 - **Pagination.** `page/1/` redirects to the archive. A page past the last one is a 404.
 - **Feed aliases.** `/feed/rss2/` and `/feed/atom/` redirect to `/feed/`. `{post}/feed/` redirects to the post.
+- **Comment pages.** With `permalinks.wpcompat_enabled`, WordPress's `{post}/comment-page-N/` redirects to
+  `{post}?cpage=N`. `POST /comments` takes comment submissions (see [Comments](#comments)).
 - **Canonical URLs.**
   - Uppercase paths, duplicate slashes, an `/index.php` prefix and the wrong trailing slash all get a 301 to the
     canonical form. File-like paths such as `/robots.txt` keep no trailing slash.
@@ -207,7 +209,7 @@ or `if`.
 |---|---|---|
 | `.Kind` | string | Always: `home front_page posts_page single page category tag author date search 404 410` |
 | `.Site` | `Title Tagline URL Language` | Always. `URL` is the absolute base URL without a trailing slash. |
-| `.Request` | `Path URL Query Paged NoIndex` | Always. `Paged` is 1 on the first page. On cached kinds `Query` holds only `q` and `page` (see Page cache). |
+| `.Request` | `Path URL Query Paged NoIndex` | Always. `Paged` is 1 on the first page. On cached kinds `Query` holds only `q`, `page` and `cpage` (see Page cache). |
 | `.Post` | `*Post` | `single`, `page`, `front_page`, `posts_page` |
 | `.Posts` | `[]*Post` | `home`, `posts_page`, archives, `search` |
 | `.Term` | `*Term` | `category`, `tag` |
@@ -217,6 +219,7 @@ or `if`.
 | `.Pagination` | `Current Total Prev Next Links` | Listing kinds |
 | `.FeedURL` | string | `home`, `posts_page`, category, tag and author archives |
 | `.Head` | `Title Description Canonical Robots Tags` | Always on the live site. The resolved SEO values that `head` prints (see below). |
+| `.Comments` | `*Comments` | `single`, `page`, `front_page` while `discussion.comments_enabled` is on (see [Comments](#comments)) |
 
 - **`Post`.**
   - Identity and text: `ID WPID Type Slug Title Excerpt ContentHTML ContentText Template Sticky CommentStatus`.
@@ -486,7 +489,44 @@ undeclared size is an error.
 {{range .Post.Authors}}<a href="{{url .}}">{{avatar . "thumbnail"}} {{.Name}}</a>{{end}}
 ```
 
+`avatar comment "size"` gives the initials SVG for a commenter. Commenters never get an image (no Gravatar).
+
 Not yet available: `related_posts` and `share_links` arrive with M5.
+
+## Comments
+
+`.Comments` holds the comment section. The default theme's `parts/comments.html` and `parts/comment.html` are a
+complete example.
+
+| Field | Notes |
+|---|---|
+| `Open` | New comments are accepted: comments are on, the post's `comment_status` is `open`, and it was published within `discussion.close_after_days` (0 = never closes). |
+| `Total` | Approved comments on the post. |
+| `Threads` | `[]*Comment`, the top-level comments of the current comment page, oldest first, replies in `Children`. |
+| `Pagination` | `Current Total Links` over top-level threads (`discussion.comments_per_page`, 0 = one page). Links use `?cpage=N#comments`. Nil when everything fits. |
+| `Form` | `*CommentForm`, nil when closed. |
+| `Notice` | The visitor's own comment awaiting moderation, right after they post it. |
+
+- **`Comment`:** `ID Anchor AuthorName AuthorURL BodyHTML Date Depth Children ReplyURL Pending`.
+  - Give the element `id="{{.Anchor}}"`. That's where the post-submit redirect lands. Imported comments keep
+    their WordPress id (`comment-999`).
+  - `BodyHTML` is the text escaped, with line breaks as `<br>` and http(s) URLs linked
+    `rel="nofollow ugc noopener"`. Print it as is.
+  - Link `AuthorURL` with `rel="nofollow ugc noopener"`. The commenter's email is never available to templates.
+  - `Depth` starts at 1. Replies past `discussion.thread_depth` are listed after their parent at the deepest
+    level.
+  - `ReplyURL` is empty at the deepest level and when comments are closed.
+- **`CommentForm`:** `Action PostID Token Honeypot ReplyTo CancelURL`. The form posts to `Action` with method
+  `post` and these fields:
+  - `post_id`, `token` and `parent_id` (`ReplyTo.ID`, or 0) as hidden inputs.
+  - `author_name` and `author_email` (both required), `author_url` (optional) and `body` (2–5000 characters).
+  - An empty text input named `{{.Honeypot}}`, visually hidden with CSS (not `type="hidden"`), with
+    `tabindex="-1"` and `autocomplete="off"`. Anything typed into it marks the comment as spam.
+- **Replies without JavaScript.** `ReplyURL` is `?replytocom=ID#respond`. That request skips the page cache and
+  fills `Form.ReplyTo`. Mark reply links `rel="nofollow"`.
+- **After posting.** `POST /comments` answers with a 303 to the comment's anchor. A comment that isn't approved
+  yet comes back as `.Notice` for ten minutes through the `afsc_comment` cookie, which also skips the page cache.
+  Errors get a plain, unthemed page with a link back.
 
 ## Images
 
@@ -595,13 +635,16 @@ With a TTL of 0 the header is `no-cache` and nothing is kept in memory. Response
 
 What this means for templates:
 
-- **One response for every visitor.** The cache key is the path plus the `q` and `page` query parameters. Don't make
+- **One response for every visitor.** The cache key is the path plus the `q`, `page` and `cpage` query parameters. Don't make
   output depend on cookies, request headers, the time of day or other query parameters. Those vary per request, and
   the first visitor's version would be served to everyone.
-- **`.Request.Query`** on cached kinds contains only `q` and `page`, so tracking parameters such as `utm_source` never
+- **`.Request.Query`** on cached kinds contains only `q`, `page` and `cpage`, so tracking parameters such as `utm_source` never
   end up in a stored page.
 - **Requests that skip the cache:** an `Authorization` header, any cookie named `afsc_*` (reserved for previews and
-  commenters), a `preview` parameter, and the WordPress-style `/?p=` parameters handled by the compatibility layer.
+  commenters), a `preview` or `replytocom` parameter, and the WordPress-style `/?p=` parameters handled by the
+  compatibility layer. A page showing the visitor's own pending comment or a reply form is sent `private, no-store`.
+- **Comments.** Approving a comment, or unapproving one, purges the post's page with every `cpage`. Posting a
+  comment never writes to the cache.
 - **Purging.** Changing a post purges its URL, the home page, the posts page and its date, term and author archives,
   each with every page number and its feed, plus the sitemaps that list it and the sitemap index. Settings, menus, imports and `--rerender` purge everything. In dev mode,
   a theme reload purges everything.

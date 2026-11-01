@@ -191,20 +191,37 @@ func (t *Theme) imageURL(st *state) func(m *Media, size ...string) (string, erro
 }
 
 // avatar renders an author's avatar at a theme size, or an initials SVG coloured from a hash of the name (§20.1).
-func (st *state) avatar(a *Author, size string) (template.HTML, error) {
-	if a == nil {
+// avatar prints an author's avatar image, or an initials SVG for authors without one and for every commenter
+// (§20.1: no Gravatar).
+func (st *state) avatar(v any, size string) (template.HTML, error) {
+	var name string
+	var m *Media
+	switch x := v.(type) {
+	case *Author:
+		if x == nil {
+			return "", nil
+		}
+		name, m = x.Name, x.Avatar
+	case *Comment:
+		if x == nil {
+			return "", nil
+		}
+		name = x.AuthorName
+	case nil:
 		return "", nil
+	default:
+		return "", fmt.Errorf("avatar: want an author or a comment, got %T", v)
 	}
 	if _, _, _, ok := st.manifest.Images().Variant(content.MediaInfo{}, size); !ok {
 		return "", fmt.Errorf("avatar: image size %q is not declared in theme.json", size)
 	}
 	esc := template.HTMLEscapeString
-	if m := a.Avatar; m != nil {
+	if m != nil {
 		v, w, h, err := st.variant("avatar", m, size)
 		if err != nil {
 			return "", err
 		}
-		b := `<img src="` + esc(content.MediaURL(m.info(), v)) + `" alt="` + esc(a.Name) + `"`
+		b := `<img src="` + esc(content.MediaURL(m.info(), v)) + `" alt="` + esc(name) + `"`
 		if w > 0 && h > 0 {
 			b += ` width="` + strconv.Itoa(w) + `" height="` + strconv.Itoa(h) + `"`
 		}
@@ -217,12 +234,18 @@ func (st *state) avatar(a *Author, size string) (template.HTML, error) {
 	if sz, ok := st.manifest.Images().Sizes[size]; ok && sz.Width > 0 {
 		px = sz.Width
 	}
-	hash := uint32(2166136261) // FNV-1a
-	for _, c := range []byte(a.Name) {
+	return InitialsAvatar(name, px), nil
+}
+
+// InitialsAvatar is an SVG with the first and last initials of name, coloured from an FNV-1a hash of the name.
+func InitialsAvatar(name string, px int) template.HTML {
+	esc := template.HTMLEscapeString
+	hash := uint32(2166136261)
+	for _, c := range []byte(name) {
 		hash = (hash ^ uint32(c)) * 16777619
 	}
 	initials := ""
-	if words := strings.Fields(a.Name); len(words) > 0 {
+	if words := strings.Fields(name); len(words) > 0 {
 		initials = string([]rune(words[0])[:1])
 		if len(words) > 1 {
 			initials += string([]rune(words[len(words)-1])[:1])
@@ -230,9 +253,9 @@ func (st *state) avatar(a *Author, size string) (template.HTML, error) {
 	}
 	n := strconv.Itoa(px)
 	return template.HTML(`<svg class="avatar avatar-initials" width="` + n + `" height="` + n + `" viewBox="0 0 ` + n + ` ` + n +
-		`" role="img" aria-label="` + esc(a.Name) + `"><rect width="100%" height="100%" fill="hsl(` +
+		`" role="img" aria-label="` + esc(name) + `"><rect width="100%" height="100%" fill="hsl(` +
 		strconv.Itoa(int(hash%360)) + ` 45% 40%)"/><text x="50%" y="50%" dy=".35em" text-anchor="middle" fill="#fff" ` +
-		`font-family="sans-serif" font-size="` + strconv.Itoa(px*2/5) + `">` + esc(strings.ToUpper(initials)) + `</text></svg>`), nil
+		`font-family="sans-serif" font-size="` + strconv.Itoa(px*2/5) + `">` + esc(strings.ToUpper(initials)) + `</text></svg>`)
 }
 
 func (t *Theme) menu(st *state) func(d *PageData, loc string) ([]*MenuItem, error) {

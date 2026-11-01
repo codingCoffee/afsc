@@ -4,4 +4,5 @@
   <header class="entry-header"><h1 class="entry-title">{{.Post.Title}}</h1></header>
   <div class="entry-content">{{.Post.ContentHTML}}</div>
 </article>
+{{template "parts/comments.html" .}}
 {{end}}

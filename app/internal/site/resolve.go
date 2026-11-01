@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"net/url"
+	"regexp"
 	"strconv"
 	"strings"
 
@@ -25,6 +26,9 @@ type Result struct {
 }
 
 const kindFeed = "feed"
+
+// commentPageRe matches WordPress comment page URLs, /<post>/comment-page-N/, which move to ?cpage=N.
+var commentPageRe = regexp.MustCompile(`^(/.+?)/comment-page-([1-9][0-9]{0,5})/?$`)
 
 func gone(status int) Result { return Result{Status: status, Kind: theme.Kind410} }
 
@@ -70,6 +74,13 @@ func (st *Site) resolve(ctx context.Context, snap *snapshot, r *http.Request) (R
 	}
 	if canon != raw {
 		return Result{Status: http.StatusMovedPermanently, Location: location(canon, r.URL.RawQuery)}, nil
+	}
+
+	if p := snap.settings.Permalinks; p.WPCompatEnabled {
+		if m := commentPageRe.FindStringSubmatch(canon); m != nil {
+			return Result{Status: http.StatusMovedPermanently,
+				Location: location(Canonical(m[1], p.TrailingSlash), "cpage="+m[2])}, nil
+		}
 	}
 
 	routes, redirect := snap.perm.Match(canon)

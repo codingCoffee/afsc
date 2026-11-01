@@ -1,0 +1,60 @@
+{{- with .Comments}}{{if or .Total .Form .Notice}}
+<section id="comments" class="comments-area">
+  {{- if .Total}}
+  <h2 class="comments-title">{{t "comments_title"}} ({{.Total}})</h2>
+  {{- end}}
+  {{- with .Notice}}
+  <ol class="comment-list comment-notice" role="status">{{template "parts/comment.html" .}}</ol>
+  {{- end}}
+  {{- with .Threads}}
+  <ol class="comment-list">{{range .}}{{template "parts/comment.html" .}}{{end}}</ol>
+  {{- end}}
+  {{- with .Pagination}}{{if gt .Total 1}}
+  <nav class="navigation comments-pagination" aria-label="{{t "comments_navigation"}}">
+    <div class="nav-links">
+      {{- range .Links}}
+      {{- if .Dots}}<span class="page-numbers dots">&hellip;</span>
+      {{- else if .Current}}<span aria-current="page" class="page-numbers current">{{.N}}</span>
+      {{- else}}<a class="page-numbers" href="{{.URL}}">{{.N}}</a>{{end}}
+      {{- end}}
+    </div>
+  </nav>
+  {{- end}}{{end}}
+  {{- with .Form}}
+  <div id="respond" class="comment-respond">
+    <h2 class="comment-reply-title">
+      {{- with .ReplyTo}}{{t "reply_to"}} {{.AuthorName}}{{else}}{{t "leave_comment"}}{{end}}
+      {{- if .ReplyTo}} <small><a rel="nofollow" href="{{.CancelURL}}">{{t "cancel_reply"}}</a></small>{{end}}
+    </h2>
+    <form action="{{.Action}}" method="post" class="comment-form">
+      <p class="comment-notes">{{t "comment_notes"}}</p>
+      <p class="comment-form-comment">
+        <label for="comment-body">{{t "comment"}}</label>
+        <textarea id="comment-body" name="body" rows="6" minlength="2" maxlength="5000" required></textarea>
+      </p>
+      <p class="comment-form-author">
+        <label for="comment-author">{{t "name"}}</label>
+        <input id="comment-author" name="author_name" type="text" maxlength="100" autocomplete="name" required>
+      </p>
+      <p class="comment-form-email">
+        <label for="comment-email">{{t "email"}}</label>
+        <input id="comment-email" name="author_email" type="email" maxlength="254" autocomplete="email" required>
+      </p>
+      <p class="comment-form-url">
+        <label for="comment-url">{{t "website"}}</label>
+        <input id="comment-url" name="author_url" type="url" maxlength="500" autocomplete="url">
+      </p>
+      <p class="comment-form-hp" aria-hidden="true">
+        <label>{{t "leave_empty"}} <input type="text" name="{{.Honeypot}}" tabindex="-1" autocomplete="off"></label>
+      </p>
+      <input type="hidden" name="post_id" value="{{.PostID}}">
+      <input type="hidden" name="parent_id" value="{{with .ReplyTo}}{{.ID}}{{else}}0{{end}}">
+      <input type="hidden" name="token" value="{{.Token}}">
+      <p class="form-submit"><button type="submit">{{t "post_comment"}}</button></p>
+    </form>
+  </div>
+  {{- else}}{{if .Total}}
+  <p class="no-comments">{{t "comments_closed"}}</p>
+  {{- end}}{{end}}
+</section>
+{{- end}}{{end}}

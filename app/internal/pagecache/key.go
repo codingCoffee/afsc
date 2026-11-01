@@ -12,7 +12,8 @@ import (
 const MaxQueryRunes = 200
 
 // reserved query params change what the resolver does (wpcompat, previews), so requests carrying them bypass.
-var reserved = []string{"p", "page_id", "cat", "author", "attachment_id", "feed", "s", "preview"}
+// replytocom renders a reply form for one comment, which is per-visitor navigation that bots shouldn't fill the cache with.
+var reserved = []string{"p", "page_id", "cat", "author", "attachment_id", "feed", "s", "preview", "replytocom"}
 
 // CookiePrefix marks cookies that bypass the cache (previews, commenters). Other cookies, such as analytics, don't.
 const CookiePrefix = "afsc_"
@@ -39,13 +40,16 @@ func Bypass(r *http.Request) bool {
 	return false
 }
 
-// Key builds the cache key from the site host, the request path and the allowed query params (q, page).
+// Key builds the cache key from the site host, the request path and the allowed query params (q, page, cpage).
 // It also returns the normalised query, which is all a cached page may depend on.
 func Key(host string, u *url.URL) (key, query string) {
 	in, _ := url.ParseQuery(u.RawQuery)
 	out := url.Values{}
 	if n, err := strconv.Atoi(in.Get("page")); err == nil && n > 1 {
 		out.Set("page", strconv.Itoa(n))
+	}
+	if n, err := strconv.Atoi(in.Get("cpage")); err == nil && n > 1 {
+		out.Set("cpage", strconv.Itoa(n))
 	}
 	if q := strings.TrimSpace(in.Get("q")); q != "" {
 		if utf8.RuneCountInString(q) > MaxQueryRunes {

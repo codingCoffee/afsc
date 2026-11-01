@@ -95,6 +95,36 @@ function when(v: string | null) {
         </CardContent>
       </Card>
 
+      <Card v-if="data.pending_comments" class="gap-3">
+        <CardHeader>
+          <CardTitle class="font-display text-sm tracking-wide uppercase">
+            Pending comments <span class="font-mono text-xs tabular-nums text-muted-foreground">{{ data.pending_comments.count }}</span>
+          </CardTitle>
+          <CardDescription>
+            Waiting for moderation. <NuxtLink to="/comments" class="underline underline-offset-2">Open comments</NuxtLink>
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <p v-if="!data.pending_comments.latest.length" class="text-sm text-muted-foreground">
+            Nothing to moderate.
+          </p>
+          <ul v-else class="divide-y">
+            <li v-for="c in data.pending_comments.latest" :key="c.id" class="grid gap-0.5 py-2">
+              <div class="flex items-baseline gap-3">
+                <span class="min-w-0 flex-1 truncate text-sm font-medium">{{ c.author_name }}</span>
+                <time class="shrink-0 font-mono text-[11px] text-muted-foreground" :datetime="c.created_at">{{ when(c.created_at) }}</time>
+              </div>
+              <p class="line-clamp-2 text-sm text-muted-foreground">
+                {{ c.excerpt }}
+              </p>
+              <NuxtLink :to="{ path: '/comments', query: { post_id: c.post_id } }" class="truncate text-xs underline-offset-2 hover:underline">
+                On {{ c.post_title }}
+              </NuxtLink>
+            </li>
+          </ul>
+        </CardContent>
+      </Card>
+
       <Card v-if="can('content.manage')" class="gap-3">
         <CardHeader>
           <CardTitle class="font-display text-sm tracking-wide uppercase">

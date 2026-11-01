@@ -35,3 +35,21 @@ func TestAvatarFunc(t *testing.T) {
 		t.Errorf("undeclared size: %v", err)
 	}
 }
+
+func TestCommentAvatarIsInitials(t *testing.T) {
+	dir := writeTheme(t, map[string]string{
+		"theme.json":            `{"name":"t","image_sizes":{"thumb":{"width":40,"height":40,"crop":true}}}`,
+		"templates/single.html": `{{avatar .Comments.Notice "thumb"}}`,
+	})
+	th, err := Load(dir, Options{Backend: FixtureBackend(&Manifest{})})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var b strings.Builder
+	if _, err := th.Page(&b, Fixture(KindSingle, true)); err != nil {
+		t.Fatal(err)
+	}
+	if got := b.String(); got != string(InitialsAvatar("New Visitor", 40)) || !strings.Contains(got, ">NV</text>") {
+		t.Errorf("comment avatar: %s", got)
+	}
+}

@@ -870,10 +870,17 @@ func (w *writer) writeComments(ctx context.Context, tx pgx.Tx) error {
 	if err != nil {
 		return err
 	}
+	var ipDays int
+	if err := tx.QueryRow(ctx, sqlIPRetentionDays, settings.Defaults().Discussion.CommentIPRetentionDays).Scan(&ipDays); err != nil {
+		return err
+	}
 	for d := 0; d <= maxDepth(w.ix.comments); d++ {
-		if err := w.upsert(ctx, tx, "comments", sqlUpsertComments, d); err != nil {
+		if err := w.upsert(ctx, tx, "comments", sqlUpsertComments, d, ipDays); err != nil {
 			return err
 		}
+	}
+	if _, err := tx.Exec(ctx, sqlBumpCommentSeq, w.like); err != nil {
+		return err
 	}
 	w.finish("comments", n)
 	return nil

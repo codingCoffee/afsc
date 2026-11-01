@@ -33,8 +33,44 @@ type PageData struct {
 	Date       *DateArchive
 	Search     *Search
 	Pagination *Pagination
-	FeedURL    string // feed of this archive, empty when it has none
-	Head       *Head  // resolved SEO output; nil prints a bare title
+	FeedURL    string    // feed of this archive, empty when it has none
+	Head       *Head     // resolved SEO output; nil prints a bare title
+	Comments   *Comments // single and page kinds; nil when comments are off site-wide
+}
+
+// Comments is the comment section of a post or page (§11).
+type Comments struct {
+	Open       bool         // new comments are accepted
+	Total      int          // approved comments on the post
+	Threads    []*Comment   // top-level comments of the current comment page, replies nested
+	Pagination *Pagination  // nil when every thread fits on one page
+	Form       *CommentForm // nil when closed
+	Notice     *Comment     // the visitor's own comment awaiting moderation, if any
+}
+
+// Comment is one approved comment, or the visitor's own pending one. BodyHTML is escaped text with autolinks.
+type Comment struct {
+	ID         int64
+	Anchor     string // element id, "comment-<id>"; imported comments keep their WordPress id
+	AuthorName string
+	AuthorURL  string // http(s) or empty; link it with rel="nofollow ugc noopener"
+	BodyHTML   template.HTML
+	Date       time.Time
+	Depth      int // 1 for top-level
+	Children   []*Comment
+	ReplyURL   string // empty when replies aren't possible (closed or at the depth limit)
+	Pending    bool
+}
+
+// CommentForm is what the comment form posts to POST /comments. Field names: post_id, parent_id, token,
+// author_name, author_email, author_url, body, and the hidden honeypot named by Honeypot.
+type CommentForm struct {
+	Action    string
+	PostID    int64
+	Token     string
+	Honeypot  string
+	ReplyTo   *Comment // set on ?replytocom= requests; its ID goes in parent_id
+	CancelURL string   // the post URL without replytocom
 }
 
 // Head is the resolved SEO output of a page (title, meta, links, JSON-LD). The head func prints it.

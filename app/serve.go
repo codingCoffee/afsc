@@ -21,8 +21,10 @@ import (
 	"github.com/labstack/echo/v5/middleware"
 	"github.com/urfave/cli/v3"
 
+	"afsc/internal/comments"
 	"afsc/internal/imgproxy"
 	"afsc/internal/site"
+	"afsc/internal/spam"
 	"afsc/internal/storage"
 )
 
@@ -79,6 +81,10 @@ func serve(ctx context.Context, cmd *cli.Command) error {
 	if err != nil {
 		return err
 	}
+	commentSigner, err := spam.NewSigner([]byte(secret))
+	if err != nil {
+		return err
+	}
 
 	dbURL := os.Getenv("AFSC_DATABASE_URL")
 	if dbURL == "" {
@@ -115,7 +121,8 @@ func serve(ctx context.Context, cmd *cli.Command) error {
 		return err
 	}
 	pub, err := site.New(ctx, site.Config{Pool: pool, BaseURL: baseURL, ThemeDir: themeDir, Dev: dev, Logf: log.Printf,
-		Storage: store, Imgproxy: imgproxy.New(ipcfg), CacheBytes: int64(cacheMB) << 20, PreviewKey: previewKey})
+		Storage: store, Imgproxy: imgproxy.New(ipcfg), CacheBytes: int64(cacheMB) << 20, PreviewKey: previewKey,
+		CommentSigner: commentSigner})
 	if err != nil {
 		return err
 	}
@@ -196,6 +203,8 @@ func serve(ctx context.Context, cmd *cli.Command) error {
 		e.GET(path, public)
 		e.HEAD(path, public)
 	}
+	e.POST(site.CommentsPath, postComment(comments.New(pool, pub, commentSigner, log.Printf), pub, baseURL),
+		clientIPMiddleware(trusted))
 
 	auth := newAuthHandler(pool, authConfig{
 		secret:          []byte(secret),

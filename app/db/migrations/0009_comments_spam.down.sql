@@ -1,0 +1,11 @@
+DROP TABLE spam_archive;
+DROP TABLE spam_blocklist;
+DROP TABLE spam_tokens;
+DROP INDEX comments_retention_idx;
+DROP INDEX comments_status_idx;
+DROP INDEX comments_trusted_idx;
+DROP INDEX comments_email_idx;
+DROP INDEX comments_ip_idx;
+DROP INDEX comments_body_hash_idx;
+ALTER TABLE comments DROP COLUMN body_hash;
+DROP FUNCTION afsc_body_hash(text);
