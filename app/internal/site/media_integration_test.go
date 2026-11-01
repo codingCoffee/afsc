@@ -138,7 +138,7 @@ func TestMediaServing(t *testing.T) {
   }
 
   st, err := New(ctx, Config{Pool: pool, BaseURL: "https://blog.example.com", ThemeDir: "../../themes/default", Logf: t.Logf,
-    Storage: store, Imgproxy: echoImager{}})
+    Storage: store, Imgproxy: echoImager{}, CacheBytes: 1 << 20})
   if err != nil {
     t.Fatal(err)
   }
@@ -175,7 +175,7 @@ func TestMediaServing(t *testing.T) {
           t.Errorf("%s: Content-Type %q, want %q", lp.Path, h.Get("Content-Type"), want)
         }
         if h.Get("Cache-Control") != "public, max-age=86400" || h.Get("ETag") == "" || h.Get("Last-Modified") == "" ||
-          h.Get("Vary") != "" {
+          h.Get("Vary") != "" || h.Get("X-Cache") != "" {
           t.Errorf("%s: headers %v", lp.Path, h)
         }
         if lp.Variant == "orig" && !bytes.Equal(w.Body.Bytes(), orig) {
@@ -231,7 +231,7 @@ func TestMediaServing(t *testing.T) {
     base := fmt.Sprintf("/m/%d/%s/", id, v)
     w := get(base+"w320/chart.png", "Accept", "image/webp,*/*")
     if w.Code != 200 || w.Header().Get("Content-Type") != "image/webp" || w.Header().Get("Vary") != "Accept" ||
-      w.Header().Get("Cache-Control") != "public, max-age=31536000, immutable" {
+      w.Header().Get("Cache-Control") != "public, max-age=31536000, immutable" || w.Header().Get("X-Cache") != "" {
       t.Errorf("w320: %d %v", w.Code, w.Header())
     }
     if w := get(base + "c150x150/chart.png"); w.Code != 200 || w.Body.String() != "150x150 crop=true png" {
@@ -260,6 +260,20 @@ func TestMediaServing(t *testing.T) {
       if w := get(u); w.Code != 200 {
         t.Errorf("%s: %d", u, w.Code)
       }
+    }
+  })
+
+  t.Run("media is never page-cached", func(t *testing.T) {
+    st.purgeAll()
+    for _, m := range recs {
+      for _, lp := range m.LegacyPaths {
+        get(lp.Path)
+      }
+    }
+    get("/wp-content/uploads/2020/05/nope.png")
+    get("/m/1/00000000/orig/missing.png")
+    if n, _ := st.cache.Stats(); n != 0 {
+      t.Errorf("media requests left %d page cache entries", n)
     }
   })
 }

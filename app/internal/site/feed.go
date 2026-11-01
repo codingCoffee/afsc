@@ -44,8 +44,8 @@ func cdata(s string) string {
 
 func rssDate(t time.Time) string { return t.UTC().Format(time.RFC1123Z) }
 
-// serveFeed writes an RSS 2.0 feed compatible with WordPress output (§6.4).
-func (st *Site) serveFeed(w http.ResponseWriter, r *http.Request, snap *snapshot, res Result) error {
+// renderFeed builds an RSS 2.0 feed compatible with WordPress output (§6.4).
+func (st *Site) renderFeed(r *http.Request, snap *snapshot, res Result) (*response, error) {
   s := snap.settings
   title, link, f := s.Site.Title, snap.abs("/"), filter{}
   switch res.FeedOf {
@@ -61,10 +61,10 @@ func (st *Site) serveFeed(w http.ResponseWriter, r *http.Request, snap *snapshot
   }
   rows, _, err := st.listPosts(r.Context(), f, s.Reading.FeedItems, 0)
   if err != nil {
-    return err
+    return nil, err
   }
   if err := st.hydrate(r.Context(), snap, rows, hydrateOpts{teaser: true, feed: !s.Reading.FeedExcerptOnly}); err != nil {
-    return err
+    return nil, err
   }
 
   desc := s.Site.Tagline
@@ -115,8 +115,6 @@ func (st *Site) serveFeed(w http.ResponseWriter, r *http.Request, snap *snapshot
   }
   b.WriteString("</channel>\n</rss>\n")
 
-  w.Header().Set("Content-Type", "application/rss+xml; charset=UTF-8")
-  w.WriteHeader(http.StatusOK)
-  _, _ = b.WriteTo(w)
-  return nil
+  return &response{status: http.StatusOK, header: http.Header{"Content-Type": {"application/rss+xml; charset=UTF-8"}},
+    body: b.Bytes()}, nil
 }

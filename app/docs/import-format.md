@@ -40,9 +40,13 @@ Environment: `AFSC_DATABASE_URL`, and unless `--dry-run`, `AFSC_S3_BUCKET`, `AFS
 
 ### Not done yet
 
-§17 asks the importer to enqueue `content.rerender_all`, `search.reindex`, `related.compute` and `spam.retrain`, and
-purge the page cache, after an import. None of these jobs or the cache exist yet. Content HTML and the search vector
-are already up to date after import, so nothing is lost; the hooks will be added with the job queue.
+§17 asks the importer to enqueue `content.rerender_all`, `search.reindex`, `related.compute` and `spam.retrain` after
+an import. None of these jobs exist yet. Content HTML and the search vector are already up to date after import, so
+nothing is lost; the hooks will be added with the job queue.
+
+The page cache *is* purged. After any import that may have written rows (every run except `--dry-run` and one that
+failed validation), `afsc import` sends `NOTIFY afsc_cache`. Every running `afsc serve` then reloads its site data
+(settings, menus, pages, terms, authors and redirects) and drops every cached page. See `docs/ops.md`.
 
 ## Layout
 
@@ -238,6 +242,7 @@ Reference fields take legacy keys.
 | `reading` | `home` (null = latest posts, or a page key), `posts_page` (page key or null), `posts_per_page` (10, 1–100), `feed_items` (10, 1–100), `feed_excerpt_only` (false) |
 | `seo` | `separator` ("-"), `title_templates` and `description_templates` (type → template; types `post page category tag author home search 404 date`; given entries override the defaults), `knowledge_graph` (`{type: "organization" \| "person", name, logo_media}`), `social_profiles` (https URLs), `twitter_site`, `default_image_media` (media key), `tag_noindex` (false), `auto_description` (false) |
 | `discussion` | `comments_enabled` (true), `close_after_days` (0 = never), `thread_depth` (3, 1–10) |
+| `cache` | `page_ttl_seconds` (60, 0–86400; how long browsers, CDNs and the in-process cache keep public pages; 0 = `no-cache`, nothing kept in-process) |
 
 ## Content
 

@@ -48,8 +48,9 @@ func (b *StaticBackend) Menu(loc string) ([]*MenuItem, error) {
 }
 
 type Options struct {
-  Dev     bool // re-read the theme when its files change
-  Backend Backend
+  Dev      bool // re-read the theme when its files change
+  Backend  Backend
+  OnReload func() // called after a successful dev reload
 }
 
 type Theme struct {
@@ -132,6 +133,9 @@ func (t *Theme) current() (*state, error) {
   }
   t.loadErr = nil
   t.state.Store(st)
+  if t.opts.OnReload != nil {
+    t.opts.OnReload()
+  }
   return st, nil
 }
 

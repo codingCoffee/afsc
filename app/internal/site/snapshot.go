@@ -17,7 +17,7 @@ import (
   "afsc/internal/theme"
 )
 
-// snapshot holds the small, read-mostly tables in memory. It is rebuilt periodically; M1d adds NOTIFY-driven refresh.
+// snapshot holds the small, read-mostly tables in memory. It is rebuilt on cache events and polled as a fallback.
 type snapshot struct {
   base        string
   settings    settings.All

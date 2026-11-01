@@ -80,5 +80,10 @@ func runThemeCheck(ctx context.Context, cmd *cli.Command) error {
     return fmt.Errorf("rerender: %w", err)
   }
   fmt.Printf("re-rendered content: %d post(s) changed\n", n)
+  if n > 0 {
+    if err := site.Notify(ctx, pool, site.Event{All: true}); err != nil {
+      return fmt.Errorf("purge page cache: %w", err)
+    }
+  }
   return nil
 }

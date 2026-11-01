@@ -6,6 +6,7 @@ import (
   "html"
   "net/http"
   "strings"
+  "sync"
   "sync/atomic"
   "time"
 
@@ -13,6 +14,7 @@ import (
 
   "afsc/internal/content"
   "afsc/internal/media"
+  "afsc/internal/pagecache"
   "afsc/internal/settings"
   "afsc/internal/storage"
   "afsc/internal/theme"
@@ -27,17 +29,26 @@ type Config struct {
   // Storage and Imgproxy serve /m/ URLs and legacy upload paths; without them those requests 404.
   Storage  storage.Reader
   Imgproxy media.Imager
+  // CacheBytes bounds the in-process page cache; 0 disables it.
+  CacheBytes int64
 }
 
+// maxEntryBytes caps a single cached page.
+const maxEntryBytes = 2 << 20
+
 type Site struct {
-  cfg   Config
-  db    *pgxpool.Pool
-  lk    Lookup
-  theme *theme.Theme
-  media *media.Server
-  snap  atomic.Pointer[snapshot]
-  nf    *notFoundLog
-  now   func() time.Time
+  cfg       Config
+  db        *pgxpool.Pool
+  lk        Lookup
+  theme     *theme.Theme
+  media     *media.Server
+  snap      atomic.Pointer[snapshot]
+  refreshMu sync.Mutex // serialises snapshot loads so an older load never replaces a newer one
+  cache     *pagecache.Cache
+  host      string
+  listening atomic.Bool
+  nf        *notFoundLog
+  now       func() time.Time
 }
 
 func New(ctx context.Context, cfg Config) (*Site, error) {
@@ -45,12 +56,17 @@ func New(ctx context.Context, cfg Config) (*Site, error) {
     cfg.Logf = func(string, ...any) {}
   }
   st := &Site{cfg: cfg, db: cfg.Pool, lk: &pgLookup{db: cfg.Pool}, nf: newNotFoundLog(), now: time.Now}
+  st.host = cfg.BaseURL[strings.Index(cfg.BaseURL, "://")+3:]
+  if cfg.CacheBytes > 0 {
+    st.cache = pagecache.New(cfg.CacheBytes, min(cfg.CacheBytes, maxEntryBytes))
+  }
   snap, err := st.loadSnapshot(ctx)
   if err != nil {
     return nil, fmt.Errorf("load site data: %w", err)
   }
   st.snap.Store(snap)
-  if st.theme, err = theme.Load(cfg.ThemeDir, theme.Options{Dev: cfg.Dev, Backend: st}); err != nil {
+  opts := theme.Options{Dev: cfg.Dev, Backend: st, OnReload: st.purgeAll}
+  if st.theme, err = theme.Load(cfg.ThemeDir, opts); err != nil {
     return nil, fmt.Errorf("load theme %s: %w", cfg.ThemeDir, err)
   }
   if cfg.Storage != nil && cfg.Imgproxy != nil {
@@ -60,8 +76,15 @@ func New(ctx context.Context, cfg Config) (*Site, error) {
   return st, nil
 }
 
-// Run refreshes cached site data and flushes the 404 log until ctx is done, then flushes once more.
+// Run refreshes cached site data, listens for cache events and flushes the 404 log until ctx is done,
+// then flushes once more.
 func (st *Site) Run(ctx context.Context) {
+  listenDone := make(chan struct{})
+  go func() {
+    st.listen(ctx)
+    close(listenDone)
+  }()
+  defer func() { <-listenDone }()
   every := 30 * time.Second
   if st.cfg.Dev {
     every = 2 * time.Second
@@ -85,11 +108,7 @@ func (st *Site) Run(ctx context.Context) {
         st.media.FlushHits(ctx)
       }
     case <-refresh.C:
-      if snap, err := st.loadSnapshot(ctx); err != nil {
-        st.cfg.Logf("site: refresh failed, keeping previous data: %v", err)
-      } else {
-        st.snap.Store(snap)
-      }
+      _ = st.refresh(ctx)
     case <-flush.C:
       st.flushNotFound(ctx)
     case <-st.nf.full:
@@ -121,31 +140,39 @@ func (st *Site) ServeHTTP(w http.ResponseWriter, r *http.Request) {
     return
   }
   snap := st.snap.Load()
-  var res Result
-  var err error
   // §6.1 step 3: media is served before redirects and canonicalisation, because legacy paths are case-sensitive
   switch {
   case strings.HasPrefix(r.URL.Path, media.Prefix):
     if st.media != nil && st.media.ServeMedia(w, r) {
       return
     }
-    res = notFound()
+    resp, err := st.render(snap, r, notFound(), r.URL.RawQuery)
+    st.finish(w, r, resp, err)
   case st.media != nil && st.media.ServeLegacy(w, r):
-    return
   default:
-    res, err = st.resolve(r.Context(), snap, r)
+    st.servePublic(w, r, snap)
   }
-  if err == nil {
-    switch {
-    case res.Location != "":
-      w.Header().Set("Location", res.Location)
-      w.WriteHeader(res.Status)
-    case res.Kind == kindFeed:
-      err = st.serveFeed(w, r, snap, res)
-    default:
-      err = st.servePage(w, r, snap, res)
-    }
+}
+
+// response is a rendered page, feed or redirect, not yet written.
+type response struct {
+  status int
+  header http.Header
+  body   []byte
+}
+
+func (st *Site) render(snap *snapshot, r *http.Request, res Result, query string) (*response, error) {
+  switch {
+  case res.Location != "":
+    return &response{status: res.Status, header: http.Header{"Location": {res.Location}}}, nil
+  case res.Kind == kindFeed:
+    return st.renderFeed(r, snap, res)
   }
+  return st.renderPage(r, snap, res, query)
+}
+
+// finish writes resp, or an error page when err is set.
+func (st *Site) finish(w http.ResponseWriter, r *http.Request, resp *response, err error) {
   if err != nil {
     st.cfg.Logf("site: %s %s: %v", r.Method, r.URL.Path, err)
     msg := "Internal Server Error"
@@ -155,5 +182,14 @@ func (st *Site) ServeHTTP(w http.ResponseWriter, r *http.Request) {
     w.Header().Set("Content-Type", "text/html; charset=utf-8")
     w.WriteHeader(http.StatusInternalServerError)
     fmt.Fprintf(w, "<!doctype html><title>Error</title><pre>%s</pre>", html.EscapeString(msg))
+    return
+  }
+  h := w.Header()
+  for k, v := range resp.header {
+    h[k] = v
+  }
+  w.WriteHeader(resp.status)
+  if r.Method != http.MethodHead {
+    _, _ = w.Write(resp.body)
   }
 }

@@ -18,6 +18,7 @@ import (
   "github.com/jackc/pgx/v5/pgconn"
 
   "afsc/internal/content"
+  "afsc/internal/settings"
   "afsc/internal/storage"
 )
 
@@ -1024,7 +1025,7 @@ func (w *writer) writeSettings(ctx context.Context, tx pgx.Tx) error {
     *ref = &resolved
   }
   staged := 0
-  for _, key := range []string{"site", "permalinks", "reading", "seo", "discussion"} {
+  for _, key := range settings.Keys {
     if !w.ix.settingsPresent[key] {
       continue
     }

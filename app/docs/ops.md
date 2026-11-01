@@ -1,7 +1,7 @@
 # Operations
 
-Notes for running AFSC in production. This page covers media serving and imgproxy for now; later milestones add to
-it.
+Notes for running AFSC in production. This page covers media serving, imgproxy and the page cache for now; later
+milestones add to it.
 
 ## Media and imgproxy
 
@@ -91,6 +91,42 @@ create the same two users with equivalent policies rather than sharing the root 
   make imgproxy generate arbitrary sizes.
 - **Legacy upload paths** are cached for a day. Their hit counts are kept in memory and written to the database every
   60 seconds and on shutdown, so a crash loses at most a minute of counts.
+
+## Page cache
+
+Each `afsc serve` process keeps rendered public pages (posts, pages, archives, home and feeds) in an in-process LRU,
+and sends cache headers so a CDN in front can hold them too. AFSC never calls a CDN purge API.
+
+- **Size.** `AFSC_PAGE_CACHE_MB` (default 128) bounds the memory per process; least recently used pages are evicted
+  first, and a single page over 2 MB is never stored. Set it to 0 to turn the in-process cache off. Count it in the
+  container's memory limit.
+- **TTL.** The `cache.page_ttl_seconds` setting (default 60, 0–86400) sets `max-age`, `s-maxage` and
+  `stale-while-revalidate`, and also how long a page lives in memory. With 0, responses say `no-cache` and nothing
+  is kept in memory. Search is always `private, no-store`; `/m/`, legacy upload paths and theme assets keep their
+  own headers and never enter the page cache.
+- **Checking it.** Cacheable responses carry `X-Cache: HIT` or `MISS`, an `ETag`, and `Age` on hits:
+
+  ```
+  curl -sI https://blog.example.com/ | grep -iE 'x-cache|cache-control|etag|age'
+  ```
+
+### Invalidation across replicas
+
+A change purges the affected URLs (or everything, for settings, menus, themes, imports and `--rerender`) and is
+broadcast with Postgres `NOTIFY afsc_cache`. Every `afsc serve` holds one extra database connection with
+`LISTEN afsc_cache`, reloads its site data (settings, menus, pages, terms, authors, prefix and regex redirects) and
+purges its cache when a message arrives.
+
+- **Connection.** The listener needs a direct or session-pooled connection. PgBouncer in transaction mode drops
+  `LISTEN`, so point `AFSC_DATABASE_URL` at Postgres directly or at a session-mode pool. Allow one connection per
+  replica on top of the pool size.
+- **Reconnects.** A dropped listener reconnects with backoff (1 to 30 seconds). Messages sent while it was down are
+  lost, so on reconnect it reloads site data and purges everything.
+- **Fallback.** Site data is also reloaded every 30 seconds, and every cached page expires after one TTL, so even a
+  missed message corrects itself within a TTL. Scheduled posts that go live also show up within one TTL.
+- **CDN.** A CDN in front keeps serving its copy until the TTL runs out (plus `stale-while-revalidate` while it
+  refetches), so it catches up within one TTL of a change. Lower the TTL if that's too long, and don't let the CDN
+  override AFSC's `Cache-Control`.
 
 ## General
 

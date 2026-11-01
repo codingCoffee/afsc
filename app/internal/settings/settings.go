@@ -91,6 +91,10 @@ type Discussion struct {
   ThreadDepth     int  `json:"thread_depth"`
 }
 
+type Cache struct {
+  PageTTLSeconds int `json:"page_ttl_seconds"`
+}
+
 // All is every registered settings group, keyed by its JSON name.
 type All struct {
   Site       Site       `json:"site"`
@@ -98,9 +102,10 @@ type All struct {
   Reading    Reading    `json:"reading"`
   SEO        SEO        `json:"seo"`
   Discussion Discussion `json:"discussion"`
+  Cache      Cache      `json:"cache"`
 }
 
-var Keys = []string{"site", "permalinks", "reading", "seo", "discussion"}
+var Keys = []string{"site", "permalinks", "reading", "seo", "discussion", "cache"}
 
 // TemplateTypes are the page types that have SEO title and description templates (§8.2).
 var TemplateTypes = []string{"post", "page", "category", "tag", "author", "home", "search", "404", "date"}
@@ -126,6 +131,7 @@ func Defaults() All {
       KnowledgeGraph:       KnowledgeGraph{Type: "organization"},
     },
     Discussion: Discussion{CommentsEnabled: true, ThreadDepth: 3},
+    Cache:      Cache{PageTTLSeconds: 60},
   }
 }
 
@@ -139,6 +145,7 @@ func Decode(b []byte) (All, map[string]bool, error) {
   present := map[string]bool{}
   targets := map[string]any{
     "site": &all.Site, "permalinks": &all.Permalinks, "reading": &all.Reading, "seo": &all.SEO, "discussion": &all.Discussion,
+    "cache": &all.Cache,
   }
   for key, raw := range groups {
     target, ok := targets[key]
@@ -168,6 +175,8 @@ func (a All) Group(key string) any {
     return a.SEO
   case "discussion":
     return a.Discussion
+  case "cache":
+    return a.Cache
   }
   return nil
 }
@@ -229,6 +238,9 @@ func (a All) Validate() error {
   }
   if a.Discussion.CloseAfterDays < 0 {
     bad("discussion.close_after_days: must be 0 (never) or more")
+  }
+  if a.Cache.PageTTLSeconds < 0 || a.Cache.PageTTLSeconds > 86400 {
+    bad("cache.page_ttl_seconds: must be 0-86400")
   }
 
   if len(errs) > 0 {

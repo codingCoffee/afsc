@@ -37,6 +37,8 @@ func TestDecodeRejects(t *testing.T) {
     `{"permalinks":{"tag_base":"admin"}}`:              "permalinks.tag_base",
     `{"seo":{"title_templates":{"widget":"x"}}}`:       "unknown type",
     `{"seo":{"social_profiles":["http://x.com/a"]}}`:   "https",
+    `{"cache":{"page_ttl_seconds":86401}}`:            "cache.page_ttl_seconds",
+    `{"cache":{"page_ttl_seconds":-1}}`:               "cache.page_ttl_seconds",
   }
   for in, want := range cases {
     if _, _, err := Decode([]byte(in)); err == nil || !strings.Contains(err.Error(), want) {

@@ -38,6 +38,7 @@ func serveCmd() *cli.Command {
       &cli.BoolFlag{Name: "migrate", Usage: "run all pending migrations before serving"},
       &cli.IntFlag{Name: "access-token-expiry-mins", Value: 5, Sources: cli.EnvVars("AFSC_ACCESS_TOKEN_EXPIRY_MINS")},
       &cli.IntFlag{Name: "refresh-token-expiry-days", Value: 7, Sources: cli.EnvVars("AFSC_REFRESH_TOKEN_EXPIRY_DAYS")},
+      &cli.IntFlag{Name: "page-cache-mb", Value: 128, Usage: "in-process page cache size; 0 disables it", Sources: cli.EnvVars("AFSC_PAGE_CACHE_MB")},
     },
     Action: serve,
   }
@@ -57,6 +58,10 @@ func serve(ctx context.Context, cmd *cli.Command) error {
   accessMins, refreshDays := cmd.Int("access-token-expiry-mins"), cmd.Int("refresh-token-expiry-days")
   if accessMins < 1 || refreshDays < 1 {
     return errors.New("token expiries must be at least 1")
+  }
+  cacheMB := cmd.Int("page-cache-mb")
+  if cacheMB < 0 || cacheMB > 1<<20 {
+    return errors.New("AFSC_PAGE_CACHE_MB must be between 0 and 1048576")
   }
 
   dbURL := os.Getenv("AFSC_DATABASE_URL")
@@ -94,7 +99,7 @@ func serve(ctx context.Context, cmd *cli.Command) error {
     return err
   }
   pub, err := site.New(ctx, site.Config{Pool: pool, BaseURL: baseURL, ThemeDir: themeDir, Dev: dev, Logf: log.Printf,
-    Storage: store, Imgproxy: imgproxy.New(ipcfg)})
+    Storage: store, Imgproxy: imgproxy.New(ipcfg), CacheBytes: int64(cacheMB) << 20})
   if err != nil {
     return err
   }

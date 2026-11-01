@@ -151,7 +151,7 @@ or `if`.
 |---|---|---|
 | `.Kind` | string | Always: `home front_page posts_page single page category tag author date search 404 410` |
 | `.Site` | `Title Tagline URL Language` | Always. `URL` is the absolute base URL without a trailing slash. |
-| `.Request` | `Path URL Query Paged NoIndex` | Always. `Paged` is 1 on the first page. |
+| `.Request` | `Path URL Query Paged NoIndex` | Always. `Paged` is 1 on the first page. On cached kinds `Query` holds only `q` and `page` (see Page cache). |
 | `.Post` | `*Post` | `single`, `page`, `front_page`, `posts_page` |
 | `.Posts` | `[]*Post` | `home`, `posts_page`, archives, `search` |
 | `.Term` | `*Term` | `category`, `tag` |
@@ -437,6 +437,33 @@ redirects for images.
 - **What to avoid in node partials.** They run at save time, so avoid `menu`, `setting` and `date` in them. Those see
   default settings outside a request.
 
+## Page cache
+
+AFSC keeps rendered pages in memory and sends cache headers so a CDN can hold them too. The TTL is the
+`cache.page_ttl_seconds` setting (default 60 seconds).
+
+| Response | Cached in memory | `Cache-Control` |
+|---|---|---|
+| 200 for `home`, `front_page`, `posts_page`, `single`, `page`, `category`, `tag`, `author`, `date` and feeds | Yes | `public, max-age=T, s-maxage=T, stale-while-revalidate=T`, plus a strong `ETag` (`304` on `If-None-Match`) |
+| 404, 410 and redirects | No | The same public value, without an `ETag` |
+| `search` | No | `private, no-store` |
+| Theme assets, `/m/` media and legacy upload paths | No | Their own headers (above) |
+
+With a TTL of 0 the header is `no-cache` and nothing is kept in memory. Responses carry `X-Cache: HIT` or `MISS`.
+
+What this means for templates:
+
+- **One response for every visitor.** The cache key is the path plus the `q` and `page` query parameters. Don't make
+  output depend on cookies, request headers, the time of day or other query parameters. Those vary per request, and
+  the first visitor's version would be served to everyone.
+- **`.Request.Query`** on cached kinds contains only `q` and `page`, so tracking parameters such as `utm_source` never
+  end up in a stored page.
+- **Requests that skip the cache:** an `Authorization` header, any cookie named `afsc_*` (reserved for previews and
+  commenters), a `preview` parameter, and the WordPress-style `/?p=` parameters handled by the compatibility layer.
+- **Purging.** Changing a post purges its URL, the home page, the posts page and its date, term and author archives,
+  each with every page number and its feed. Settings, menus, imports and `--rerender` purge everything. In dev mode,
+  a theme reload purges everything.
+
 ## afsc theme check
 
 ```
@@ -452,4 +479,5 @@ The command loads the theme, which fails on JSON errors, parse errors or unknown
 It fails on a missing field, a missing map key, a missing `t` string, an undeclared menu location or theme setting, an
 unguarded nil, or a template file that isn't part of the hierarchy (shared markup belongs in `parts/`).
 
-`--rerender` then re-renders every post's stored HTML with the theme's node partials (needs `AFSC_DATABASE_URL`).
+`--rerender` then re-renders every post's stored HTML with the theme's node partials (needs `AFSC_DATABASE_URL`). When
+any post changed, it tells every running server to purge its page cache.

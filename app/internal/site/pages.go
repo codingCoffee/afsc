@@ -12,10 +12,11 @@ import (
   "afsc/internal/theme"
 )
 
-func (st *Site) servePage(w http.ResponseWriter, r *http.Request, snap *snapshot, res Result) error {
+// renderPage renders a themed page. query is the query string the page may see: normalised for cacheable requests.
+func (st *Site) renderPage(r *http.Request, snap *snapshot, res Result, query string) (*response, error) {
   d, status, err := st.pageData(r.Context(), snap, r, res)
   if err != nil {
-    return err
+    return nil, err
   }
   if d == nil {
     d, status = st.basePage(snap, r, theme.Kind404), http.StatusNotFound
@@ -23,19 +24,17 @@ func (st *Site) servePage(w http.ResponseWriter, r *http.Request, snap *snapshot
   if status == http.StatusNotFound {
     st.nf.add(r.URL.Path, r.Referer(), st.now())
   }
+  d.Request.Query = query
   var buf bytes.Buffer
   if _, err := st.theme.Page(&buf, d); err != nil {
-    return err
+    return nil, err
   }
-  h := w.Header()
-  h.Set("Content-Type", "text/html; charset=utf-8")
+  h := http.Header{"Content-Type": {"text/html; charset=utf-8"}}
   if d.Kind == theme.KindSearch {
     h.Set("Cache-Control", "private, no-store")
     h.Set("X-Robots-Tag", "noindex")
   }
-  w.WriteHeader(status)
-  _, _ = buf.WriteTo(w)
-  return nil
+  return &response{status: status, header: h, body: buf.Bytes()}, nil
 }
 
 func (st *Site) basePage(snap *snapshot, r *http.Request, kind string) *theme.PageData {

@@ -16,6 +16,7 @@ import (
   "afsc/internal/content"
   "afsc/internal/importer"
   "afsc/internal/settings"
+  "afsc/internal/site"
   "afsc/internal/storage"
   "afsc/internal/theme"
 )
@@ -101,6 +102,12 @@ func runImport(ctx context.Context, cmd *cli.Command) error {
   }
   if rep != nil {
     printReport(rep)
+  }
+  // a failed import may have written part of the bundle, so purge unless nothing could have been written
+  if !dryRun && !errors.Is(runErr, importer.ErrInvalid) {
+    if err := site.Notify(ctx, pool, site.Event{Refresh: true, All: true}); err != nil {
+      log.Printf("warning: page cache not purged, it expires within one TTL: %v", err)
+    }
   }
 
   switch {
