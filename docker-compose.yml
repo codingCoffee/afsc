@@ -14,8 +14,30 @@ services:
         condition: service_healthy
       postgres:
         condition: service_healthy
+      imgproxy:
+        condition: service_healthy
     env_file:
       - app/.env
+
+  # Internal only: no ports are published. AFSC reaches it as http://imgproxy:8080 on the compose network.
+  imgproxy:
+    image: ghcr.io/imgproxy/imgproxy:v4.0.20
+    restart: unless-stopped
+    security_opt:
+      - "no-new-privileges:true"
+    read_only: true
+    tmpfs:
+      - /tmp
+    env_file:
+      - .imgproxy.env
+    depends_on:
+      rustfs:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "imgproxy", "health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
 
   rustfs:
     image: rustfs/rustfs:1.0.4

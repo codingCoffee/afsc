@@ -107,6 +107,7 @@ type Media struct {
   ID       int64
   WPID     int64
   Filename string
+  Version  string // first 8 hex chars of the sha256, part of every /m/ URL
   Mime     string
   Width    int
   Height   int

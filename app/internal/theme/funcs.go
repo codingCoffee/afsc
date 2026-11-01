@@ -1,6 +1,7 @@
 package theme
 
 import (
+  "cmp"
   "encoding/json"
   "errors"
   "fmt"
@@ -9,6 +10,8 @@ import (
   "strconv"
   "strings"
   "time"
+
+  "afsc/internal/content"
 )
 
 func (t *Theme) funcMap(st *state) template.FuncMap {
@@ -17,6 +20,8 @@ func (t *Theme) funcMap(st *state) template.FuncMap {
     "post_class":    PostClass,
     "url":           t.url,
     "asset":         st.assetURL,
+    "image":         st.image,
+    "image_url":     t.imageURL(st),
     "menu":          t.menu(st),
     "pagination":    st.pagination,
     "breadcrumbs":   st.breadcrumbs,
@@ -126,6 +131,59 @@ func (t *Theme) url(v any) (string, error) {
     return "", fmt.Errorf("url: %q is not a root-relative path", x)
   }
   return "", fmt.Errorf("url: cannot build a URL for %T", v)
+}
+
+func (m *Media) info() content.MediaInfo {
+  return content.MediaInfo{ID: m.ID, LegacyID: m.WPID, Filename: m.Filename, Version: m.Version, Mime: m.Mime,
+    Width: m.Width, Height: m.Height}
+}
+
+func (st *state) variant(fn string, m *Media, size string) (string, int, int, error) {
+  v, w, h, ok := st.manifest.Images().Variant(m.info(), size)
+  if !ok {
+    return "", 0, 0, fmt.Errorf("%s: image size %q is not declared in theme.json", fn, size)
+  }
+  return v, w, h, nil
+}
+
+// image renders m at a theme size as an <img> with srcset and sizes; an optional third argument replaces sizes.
+func (st *state) image(m *Media, size string, sizes ...string) (template.HTML, error) {
+  if m == nil {
+    return "", nil
+  }
+  v, w, h, err := st.variant("image", m, size)
+  if err != nil {
+    return "", err
+  }
+  esc := template.HTMLEscapeString
+  info := m.info()
+  b := `<img src="` + esc(content.MediaURL(info, v)) + `" alt="` + esc(m.Alt) + `"`
+  if w > 0 && h > 0 {
+    b += ` width="` + strconv.Itoa(w) + `" height="` + strconv.Itoa(h) + `"`
+  }
+  if srcset := st.manifest.Images().Srcset(info, v); srcset != "" {
+    s := content.SizesAttr(w)
+    if len(sizes) > 0 {
+      s = sizes[0]
+    }
+    b += ` srcset="` + esc(srcset) + `" sizes="` + esc(s) + `"`
+  }
+  size = cmp.Or(size, "full")
+  return template.HTML(b + ` class="attachment-` + esc(size) + ` size-` + esc(size) + `">`), nil
+}
+
+// imageURL returns the absolute URL of m at a theme size, or of the original without one.
+func (t *Theme) imageURL(st *state) func(m *Media, size ...string) (string, error) {
+  return func(m *Media, size ...string) (string, error) {
+    if m == nil {
+      return "", nil
+    }
+    v, _, _, err := st.variant("image_url", m, append(size, "")[0])
+    if err != nil {
+      return "", err
+    }
+    return t.opts.Backend.BaseURL() + content.MediaURL(m.info(), v), nil
+  }
 }
 
 func (t *Theme) menu(st *state) func(d *PageData, loc string) ([]*MenuItem, error) {

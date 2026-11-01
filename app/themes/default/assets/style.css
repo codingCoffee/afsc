@@ -110,6 +110,7 @@ img, video, iframe { max-width: 100%; height: auto; }
 .hentry > .entry-header .entry-title { margin: 0 0 0.5rem; font-size: clamp(1.75rem, 5vw, 2.4rem); }
 .post-thumbnail { margin: 1.5rem 0; }
 .post-thumbnail img { display: block; border-radius: 6px; }
+.posts .post-thumbnail { display: block; margin: 0.75rem 0; }
 
 .entry-content { margin-top: 1.5rem; }
 .entry-content > * + * { margin-top: 1.1em; }

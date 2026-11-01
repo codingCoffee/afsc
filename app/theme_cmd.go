@@ -24,7 +24,7 @@ func themeCmd() *cli.Command {
       Usage:     "parse every template and render it against fixture data",
       ArgsUsage: "<theme dir>",
       Flags: []cli.Flag{
-        &cli.BoolFlag{Name: "rerender", Usage: "then re-render stored post HTML with this theme's node partials (needs AFSC_DATABASE_URL)"},
+        &cli.BoolFlag{Name: "rerender", Usage: "then re-render stored post HTML with this theme's node partials and image sizes (needs AFSC_DATABASE_URL)"},
       },
       Action: runThemeCheck,
     }},
@@ -75,7 +75,7 @@ func runThemeCheck(ctx context.Context, cmd *cli.Command) error {
   if th.HasPartials() {
     parts = th
   }
-  n, err := site.RerenderAll(ctx, pool, parts)
+  n, err := site.RerenderAll(ctx, pool, parts, th.Manifest().Images())
   if err != nil {
     return fmt.Errorf("rerender: %w", err)
   }

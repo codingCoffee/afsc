@@ -270,6 +270,6 @@ func queryMedia(ctx context.Context, db *pgxpool.Pool, sql string, args ...any) 
 }
 
 func (s *snapshot) mediaView(m mediaRow) *theme.Media {
-  return &theme.Media{ID: m.ID, WPID: m.WPID(), Filename: m.Filename, Mime: m.Mime, Width: m.Width, Height: m.Height,
+  return &theme.Media{ID: m.ID, WPID: m.WPID(), Filename: m.Filename, Version: m.Version, Mime: m.Mime, Width: m.Width, Height: m.Height,
     Alt: m.Alt, Caption: m.Caption, URL: s.base + content.MediaURL(m.MediaInfo, "orig")}
 }

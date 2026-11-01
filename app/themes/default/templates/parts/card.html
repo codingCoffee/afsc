@@ -3,6 +3,9 @@
     <h2 class="entry-title"><a href="{{url .}}" rel="bookmark">{{.Title}}</a></h2>
     {{template "parts/meta.html" .}}
   </header>
+  {{- with .FeaturedMedia}}
+  <a class="post-thumbnail" href="{{url $}}" aria-hidden="true" tabindex="-1">{{image . "medium_large" "(max-width: 42rem) 100vw, 42rem"}}</a>
+  {{- end}}
   <div class="entry-summary">
     {{- with .Snippet}}<p>{{.}}</p>{{else}}<p>{{excerpt .}}</p>{{end}}
   </div>

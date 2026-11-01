@@ -119,8 +119,11 @@ func (st *Site) hydrate(ctx context.Context, snap *snapshot, rows []*postRow, o 
       continue
     }
     rc := content.RenderContext{PostID: v.WPID, Media: lookup}
-    if st.theme != nil && st.theme.HasPartials() {
-      rc.Partials = st.theme
+    if st.theme != nil {
+      rc.Images = st.theme.Manifest().Images()
+      if st.theme.HasPartials() {
+        rc.Partials = st.theme
+      }
     }
     doc := docs[p.ref.ID]
     if o.teaser {

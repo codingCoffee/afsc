@@ -81,6 +81,9 @@ func Run(ctx context.Context, o Options) (*Report, error) {
   defer conn.Exec(context.WithoutCancel(ctx), `SELECT pg_advisory_unlock(hashtext('afsc_import'))`)
 
   w := &writer{conn: conn, dir: o.BundleDir, ix: ix, rep: rep, store: o.Storage, logf: o.Logf, like: m.Source + ":%", parts: o.Partials}
+  if o.Theme != nil {
+    w.images = o.Theme.Images()
+  }
   if o.DryRun {
     tx, err := conn.Begin(ctx)
     if err != nil {

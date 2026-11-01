@@ -44,6 +44,7 @@ type writer struct {
   logf   func(string, ...any)
   like   string
   parts  content.Partials
+  images *content.ImageSizes
 
   users     map[string]uuid.UUID
   media     map[string]int64
@@ -668,7 +669,8 @@ func (w *writer) writePosts(ctx context.Context, tx pgx.Tx) error {
     if sm := wpPostKeyRe.FindStringSubmatch(r.LegacyKey); sm != nil {
       postID, _ = strconv.ParseInt(sm[1], 10, 64)
     }
-    html, text, err := content.Render(d, content.RenderContext{PostID: postID, Media: w.mediaLookup, Partials: w.parts})
+    html, text, err := content.Render(d, content.RenderContext{PostID: postID, Media: w.mediaLookup, Partials: w.parts,
+      Images: w.images})
     if err != nil {
       return nil, fmt.Errorf("%s: render: %w", r.LegacyKey, err)
     }

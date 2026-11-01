@@ -9,14 +9,40 @@ import (
   "fmt"
   "io"
   "os"
+  "strconv"
+  "strings"
+  "time"
 
   "github.com/aws/aws-sdk-go-v2/aws"
   "github.com/aws/aws-sdk-go-v2/config"
   "github.com/aws/aws-sdk-go-v2/service/s3"
+  "github.com/aws/aws-sdk-go-v2/service/s3/types"
+  "github.com/aws/smithy-go"
 )
 
 type Storage interface {
   Put(ctx context.Context, key string, body io.ReadSeeker, size int64, contentType string) error
+}
+
+// Reader streams stored originals. rng is a single "bytes=a-b" range, or "" for the whole object.
+type Reader interface {
+  Get(ctx context.Context, key, rng string) (*Object, error)
+  Head(ctx context.Context, key string) (*Object, error)
+}
+
+// ErrNotFound means the key doesn't exist. ErrRange means rng can't be satisfied.
+var (
+  ErrNotFound = errors.New("storage: object not found")
+  ErrRange    = errors.New("storage: range not satisfiable")
+)
+
+// Object is a stored file. Body is nil for Head. ContentRange is set when a range was served.
+type Object struct {
+  Body         io.ReadCloser
+  Size         int64 // total object size
+  Length       int64 // bytes in Body
+  ContentRange string
+  LastModified time.Time
 }
 
 // NewKey returns a random storage key; keys are never derived from user filenames (§7.4).
@@ -71,12 +97,56 @@ func NewS3(ctx context.Context, c S3Config) (*S3, error) {
   return &S3{client: client, bucket: c.Bucket}, nil
 }
 
-// Check verifies the bucket is reachable with the current credentials.
+// Check verifies the bucket is reachable with the current credentials. It lists one key rather than using
+// HeadBucket, because a HEAD error has no body and every failure reads as a bare 403.
 func (s *S3) Check(ctx context.Context) error {
-  if _, err := s.client.HeadBucket(ctx, &s3.HeadBucketInput{Bucket: aws.String(s.bucket)}); err != nil {
+  in := &s3.ListObjectsV2Input{Bucket: aws.String(s.bucket), MaxKeys: aws.Int32(1)}
+  if _, err := s.client.ListObjectsV2(ctx, in); err != nil {
     return fmt.Errorf("bucket %q is not reachable: %w", s.bucket, err)
   }
   return nil
+}
+
+func (s *S3) Get(ctx context.Context, key, rng string) (*Object, error) {
+  in := &s3.GetObjectInput{Bucket: aws.String(s.bucket), Key: aws.String(key)}
+  if rng != "" {
+    in.Range = aws.String(rng)
+  }
+  out, err := s.client.GetObject(ctx, in)
+  if err != nil {
+    return nil, s3Err("get", key, err)
+  }
+  o := &Object{Body: out.Body, Length: aws.ToInt64(out.ContentLength), ContentRange: aws.ToString(out.ContentRange),
+    LastModified: aws.ToTime(out.LastModified)}
+  o.Size = o.Length
+  if o.ContentRange != "" {
+    if _, total, ok := strings.Cut(o.ContentRange, "/"); ok {
+      o.Size, _ = strconv.ParseInt(total, 10, 64)
+    }
+  }
+  return o, nil
+}
+
+func (s *S3) Head(ctx context.Context, key string) (*Object, error) {
+  out, err := s.client.HeadObject(ctx, &s3.HeadObjectInput{Bucket: aws.String(s.bucket), Key: aws.String(key)})
+  if err != nil {
+    return nil, s3Err("head", key, err)
+  }
+  n := aws.ToInt64(out.ContentLength)
+  return &Object{Size: n, Length: n, LastModified: aws.ToTime(out.LastModified)}, nil
+}
+
+func s3Err(op, key string, err error) error {
+  var nsk *types.NoSuchKey
+  var nf *types.NotFound
+  var api smithy.APIError
+  switch {
+  case errors.As(err, &nsk), errors.As(err, &nf):
+    return ErrNotFound
+  case errors.As(err, &api) && api.ErrorCode() == "InvalidRange":
+    return ErrRange
+  }
+  return fmt.Errorf("%s %s: %w", op, key, err)
 }
 
 func (s *S3) Put(ctx context.Context, key string, body io.ReadSeeker, size int64, contentType string) error {

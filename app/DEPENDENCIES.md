@@ -18,7 +18,15 @@ before adding or upgrading.
 | `golang.org/x/net` | `html` parser for the allowlist sanitizer (`internal/sanitize`); no third-party sanitizer. |
 | `github.com/aws/aws-sdk-go-v2` (`aws`, `config`, `service/s3`) | Media originals in S3-compatible storage. Chosen over a hand-written SigV4 signer so credential chains, retries and signing come from a maintained, audited library. Only the S3 service package is used. |
 
+| `github.com/aws/smithy-go` | Part of the AWS SDK (already in the module graph); used directly to recognise S3 `InvalidRange` errors so media Range requests get a 416. |
+
 Indirect modules are pulled in by the above and are listed in `go.sum`.
+
+## Containers (docker-compose)
+
+| Image | Why |
+|---|---|
+| `ghcr.io/imgproxy/imgproxy` (pinned tag) | Resizes and re-encodes images for `/m/` and legacy upload paths (build plan §9). Private network only; see `docs/ops.md`. |
 
 ## npm (admin client, `client/`)
 

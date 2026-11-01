@@ -26,9 +26,10 @@ type MediaInfo struct {
 type RenderContext struct {
   PostID   int64
   Media    func(id int64) (MediaInfo, bool)
-  Partials Partials // theme node overrides, unused in Feed mode
-  BaseURL  string   // when set, root-relative src, href and poster values become absolute
-  Feed     bool     // feed-safe output: built-in markup only, no lazy loading
+  Partials Partials    // theme node overrides, unused in Feed mode
+  BaseURL  string      // when set, root-relative src, href and poster values become absolute
+  Feed     bool        // feed-safe output: built-in markup only, no lazy loading
+  Images   *ImageSizes // theme sizes; when set, library images get sized variants, srcset and sizes
 }
 
 // Partials renders a theme's nodes/<type>.html overrides.
@@ -347,28 +348,39 @@ func (r *renderer) image(n *Node, o imageOpts) (imageResult, error) {
   if err != nil {
     return imageResult{}, err
   }
-  src := n.str("src")
-  width, _ := n.int("width")
-  height, _ := n.int("height")
-  if hasMedia {
-    src = MediaURL(m, "orig")
-    if width == 0 {
-      width = int64(m.Width)
-    }
-    if height == 0 {
-      height = int64(m.Height)
-    }
-  }
-
   size := n.str("size")
   if o.gallerySize != "" {
     size = o.gallerySize
   }
+  if hasMedia && size == "" {
+    size = "full"
+  }
+
+  src := n.str("src")
+  width, _ := n.int("width")
+  height, _ := n.int("height")
+  srcset, sizes := "", ""
+  if hasMedia {
+    variant, vw, vh := "orig", m.Width, m.Height
+    if r.ctx.Images != nil {
+      variant, vw, vh, _ = r.ctx.Images.Variant(m, size)
+    }
+    src = MediaURL(m, variant)
+    if width == 0 {
+      width = int64(vw)
+    }
+    if height == 0 {
+      height = int64(vh)
+    }
+    if r.ctx.Images != nil && !r.ctx.Feed {
+      if srcset = r.ctx.Images.Srcset(m, variant); srcset != "" {
+        sizes = SizesAttr(int(width))
+      }
+    }
+  }
+
   var classes []string
   if hasMedia {
-    if size == "" {
-      size = "full"
-    }
     classes = append(classes, "wp-image-"+strconv.FormatInt(m.WPID(), 10))
   }
   if size != "" {
@@ -402,7 +414,7 @@ func (r *renderer) image(n *Node, o imageOpts) (imageResult, error) {
     r.open("a", "href", href)
   }
   r.open("img", "src", src, "alt", n.str("alt"), "title", n.str("title"), "width", itoa(width), "height", itoa(height),
-    "class", cls(classes...), "loading", loading, "decoding", decoding)
+    "class", cls(classes...), "srcset", srcset, "sizes", sizes, "loading", loading, "decoding", decoding)
   if href != "" {
     r.close("a")
   }

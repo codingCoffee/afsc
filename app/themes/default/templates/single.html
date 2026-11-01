@@ -8,7 +8,7 @@
     {{template "parts/meta.html" .Post}}
   </header>
   {{- with .Post.FeaturedMedia}}
-  <figure class="post-thumbnail"><img src="{{.URL}}" alt="{{.Alt}}"{{if .Width}} width="{{.Width}}" height="{{.Height}}"{{end}}></figure>
+  <figure class="post-thumbnail">{{image . "large" "(max-width: 42rem) 100vw, 42rem"}}</figure>
   {{- end}}
   <div class="entry-content">{{.Post.ContentHTML}}</div>
   <footer class="entry-footer">

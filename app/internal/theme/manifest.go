@@ -11,6 +11,8 @@ import (
   "regexp"
   "slices"
   "strings"
+
+  "afsc/internal/content"
 )
 
 type Manifest struct {
@@ -29,11 +31,7 @@ type Manifest struct {
   PostsPerPage map[string]int     `json:"posts_per_page"`
 }
 
-type ImageSize struct {
-  Width  int  `json:"width"`
-  Height int  `json:"height"`
-  Crop   bool `json:"crop"`
-}
+type ImageSize = content.ImageSize
 
 // Asset is a file under assets/ that the page head includes (used by `head` in M2).
 type Asset struct {
@@ -92,10 +90,16 @@ func (m *Manifest) validate() error {
     if !sizeNameRe.MatchString(name) || s.Width < 0 || s.Height < 0 || (s.Width == 0 && s.Height == 0) {
       bad("image_sizes.%s: needs a [a-z0-9_-] name and a positive width or height", name)
     }
+    if s.Crop && (s.Width <= 0 || s.Height <= 0) {
+      bad("image_sizes.%s: a cropped size needs both width and height", name)
+    }
+    if name == "full" || s.Width > 10000 || s.Height > 10000 {
+      bad("image_sizes.%s: \"full\" is reserved and dimensions are at most 10000", name)
+    }
   }
   for _, w := range m.SrcsetWidths {
-    if w <= 0 {
-      bad("srcset_widths: %d is not positive", w)
+    if w <= 0 || w > 10000 {
+      bad("srcset_widths: %d is not between 1 and 10000", w)
     }
   }
   for _, l := range m.MenuLocations {
@@ -132,6 +136,11 @@ func (m *Manifest) validate() error {
 
 func validAssetPath(p string) bool {
   return p != "" && !strings.HasPrefix(p, "/") && path.Clean(p) == p && !strings.HasPrefix(p, "..")
+}
+
+// Images is what content.Render and the /m/ handler need from image_sizes and srcset_widths.
+func (m *Manifest) Images() *content.ImageSizes {
+  return &content.ImageSizes{Sizes: m.ImageSizes, Widths: m.SrcsetWidths}
 }
 
 func (m *Manifest) AllowedClasses() map[string]bool {

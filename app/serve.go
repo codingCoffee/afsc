@@ -21,7 +21,9 @@ import (
   "github.com/labstack/echo/v5/middleware"
   "github.com/urfave/cli/v3"
 
+  "afsc/internal/imgproxy"
   "afsc/internal/site"
+  "afsc/internal/storage"
 )
 
 const nuxtURL = "http://localhost:3000"
@@ -76,7 +78,23 @@ func serve(ctx context.Context, cmd *cli.Command) error {
     return errors.New("AFSC_THEME_DIR is not set")
   }
   dev := os.Getenv("AFSC_ENV") == "dev"
-  pub, err := site.New(ctx, site.Config{Pool: pool, BaseURL: baseURL, ThemeDir: themeDir, Dev: dev, Logf: log.Printf})
+  s3cfg, err := storage.S3ConfigFromEnv()
+  if err != nil {
+    return err
+  }
+  store, err := storage.NewS3(ctx, s3cfg)
+  if err != nil {
+    return err
+  }
+  if err := store.Check(ctx); err != nil {
+    return err
+  }
+  ipcfg, err := imgproxy.ConfigFromEnv(s3cfg.Bucket)
+  if err != nil {
+    return err
+  }
+  pub, err := site.New(ctx, site.Config{Pool: pool, BaseURL: baseURL, ThemeDir: themeDir, Dev: dev, Logf: log.Printf,
+    Storage: store, Imgproxy: imgproxy.New(ipcfg)})
   if err != nil {
     return err
   }

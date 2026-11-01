@@ -11,7 +11,10 @@ import (
 
   "github.com/jackc/pgx/v5/pgxpool"
 
+  "afsc/internal/content"
+  "afsc/internal/media"
   "afsc/internal/settings"
+  "afsc/internal/storage"
   "afsc/internal/theme"
 )
 
@@ -21,6 +24,9 @@ type Config struct {
   ThemeDir string
   Dev      bool // hot-reload the theme, refresh the snapshot often, render content per request, show errors
   Logf     func(format string, args ...any)
+  // Storage and Imgproxy serve /m/ URLs and legacy upload paths; without them those requests 404.
+  Storage  storage.Reader
+  Imgproxy media.Imager
 }
 
 type Site struct {
@@ -28,6 +34,7 @@ type Site struct {
   db    *pgxpool.Pool
   lk    Lookup
   theme *theme.Theme
+  media *media.Server
   snap  atomic.Pointer[snapshot]
   nf    *notFoundLog
   now   func() time.Time
@@ -46,6 +53,10 @@ func New(ctx context.Context, cfg Config) (*Site, error) {
   if st.theme, err = theme.Load(cfg.ThemeDir, theme.Options{Dev: cfg.Dev, Backend: st}); err != nil {
     return nil, fmt.Errorf("load theme %s: %w", cfg.ThemeDir, err)
   }
+  if cfg.Storage != nil && cfg.Imgproxy != nil {
+    st.media = media.New(media.Config{Store: &media.PG{DB: cfg.Pool}, Storage: cfg.Storage, Imgproxy: cfg.Imgproxy,
+      Images: func() *content.ImageSizes { return st.theme.Manifest().Images() }, Logf: cfg.Logf})
+  }
   return st, nil
 }
 
@@ -55,16 +66,24 @@ func (st *Site) Run(ctx context.Context) {
   if st.cfg.Dev {
     every = 2 * time.Second
   }
-  refresh, flush := time.NewTicker(every), time.NewTicker(10*time.Second)
+  refresh, flush, hits := time.NewTicker(every), time.NewTicker(10*time.Second), time.NewTicker(60*time.Second)
   defer refresh.Stop()
   defer flush.Stop()
+  defer hits.Stop()
   for {
     select {
     case <-ctx.Done():
       fctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
       st.flushNotFound(fctx)
+      if st.media != nil {
+        st.media.FlushHits(fctx)
+      }
       cancel()
       return
+    case <-hits.C:
+      if st.media != nil {
+        st.media.FlushHits(ctx)
+      }
     case <-refresh.C:
       if snap, err := st.loadSnapshot(ctx); err != nil {
         st.cfg.Logf("site: refresh failed, keeping previous data: %v", err)
@@ -102,7 +121,20 @@ func (st *Site) ServeHTTP(w http.ResponseWriter, r *http.Request) {
     return
   }
   snap := st.snap.Load()
-  res, err := st.resolve(r.Context(), snap, r)
+  var res Result
+  var err error
+  // §6.1 step 3: media is served before redirects and canonicalisation, because legacy paths are case-sensitive
+  switch {
+  case strings.HasPrefix(r.URL.Path, media.Prefix):
+    if st.media != nil && st.media.ServeMedia(w, r) {
+      return
+    }
+    res = notFound()
+  case st.media != nil && st.media.ServeLegacy(w, r):
+    return
+  default:
+    res, err = st.resolve(r.Context(), snap, r)
+  }
   if err == nil {
     switch {
     case res.Location != "":

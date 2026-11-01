@@ -90,6 +90,7 @@ func TestCheckFailures(t *testing.T) {
     {"unknown node partial", map[string]string{"templates/nodes/marquee.html": `x`}, "not an overridable content node"},
     {"unknown theme.json field", map[string]string{"theme.json": `{"name":"t","colour":"red"}`}, "unknown field"},
     {"missing asset", map[string]string{"theme.json": `{"name":"t","assets":[{"path":"app.css"}]}`}, "not found"},
+    {"crop without height", map[string]string{"theme.json": `{"name":"t","image_sizes":{"sq":{"width":10,"crop":true}}}`}, "needs both"},
   }
   for _, c := range loadErr {
     t.Run(c.name, func(t *testing.T) {
@@ -116,6 +117,7 @@ func TestCheckFailures(t *testing.T) {
     {"missing string", "templates/single.html", `{{t "nope"}}`, `no string "nope"`},
     {"undeclared menu", "templates/single.html", `{{range menu . "sidebar"}}{{end}}`, "not declared"},
     {"undeclared theme setting", "templates/single.html", `{{theme_setting "x"}}`, "not declared"},
+    {"undeclared image size", "templates/single.html", `{{image .Post.FeaturedMedia "huge"}}`, "not declared"},
     {"unknown template", "templates/sidebar.html", `x`, "not part of the template hierarchy"},
     {"bad node partial", "templates/nodes/paragraph.html", `{{.Nope}}`, "can't evaluate field Nope"},
   }
@@ -202,6 +204,35 @@ func TestAssets(t *testing.T) {
   }
   if !strings.HasPrefix(b.String(), AssetPrefix) || !strings.HasSuffix(b.String(), "/css/site.css") {
     t.Errorf("asset url: %q", b.String())
+  }
+}
+
+func TestImageFuncs(t *testing.T) {
+  dir := writeTheme(t, map[string]string{
+    "theme.json": `{"name":"t","image_sizes":{"large":{"width":1024,"height":1024},"thumb":{"width":150,"height":150,"crop":true}},
+      "srcset_widths":[640]}`,
+    "templates/single.html": `{{image .Post.FeaturedMedia "large"}}|{{image .Post.FeaturedMedia "large" "50vw"}}|` +
+      `{{image_url .Post.FeaturedMedia "thumb"}}|{{image_url .Post.FeaturedMedia}}|{{image nil "large"}}`,
+  })
+  th, err := Load(dir, Options{Backend: FixtureBackend(&Manifest{})})
+  if err != nil {
+    t.Fatal(err)
+  }
+  var b strings.Builder
+  if _, err := th.Page(&b, Fixture(KindSingle, true)); err != nil {
+    t.Fatal(err)
+  }
+  srcset := `/m/7/ab12cd34/w640/chart.png 640w, /m/7/ab12cd34/w1024/chart.png 1024w, /m/7/ab12cd34/orig/chart.png 1600w`
+  img := `<img src="/m/7/ab12cd34/w1024/chart.png" alt="Bar chart" width="1024" height="576" srcset="` + srcset + `" sizes="%s" class="attachment-large size-large">`
+  want := strings.Join([]string{
+    strings.Replace(img, "%s", "(max-width: 1024px) 100vw, 1024px", 1),
+    strings.Replace(img, "%s", "50vw", 1),
+    fixtureBase + "/m/7/ab12cd34/c150x150/chart.png",
+    fixtureBase + "/m/7/ab12cd34/orig/chart.png",
+    "",
+  }, "|")
+  if b.String() != want {
+    t.Errorf("\n got %s\nwant %s", b.String(), want)
   }
 }
 

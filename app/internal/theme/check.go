@@ -57,7 +57,8 @@ func Check(dir string) ([]CheckResult, error) {
     if target == nil {
       r.Err = errors.New("no fixture content for this node")
     } else {
-      _, _, r.Err = content.Render(target, content.RenderContext{PostID: 123, Media: content.SampleMedia, Partials: t})
+      _, _, r.Err = content.Render(target, content.RenderContext{PostID: 123, Media: content.SampleMedia, Partials: t,
+        Images: st.manifest.Images()})
     }
     out = append(out, r)
   }

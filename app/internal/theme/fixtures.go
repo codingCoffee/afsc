@@ -27,7 +27,7 @@ func FixtureBackend(m *Manifest) *StaticBackend {
 }
 
 func fixtureMedia() *Media {
-  return &Media{ID: 7, WPID: 456, Filename: "chart.png", Mime: "image/png", Width: 1600, Height: 900,
+  return &Media{ID: 7, WPID: 456, Filename: "chart.png", Version: "ab12cd34", Mime: "image/png", Width: 1600, Height: 900,
     Alt: "Bar chart", Caption: "Example chart", URL: fixtureBase + "/m/7/ab12cd34/orig/chart.png"}
 }
 

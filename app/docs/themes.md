@@ -46,7 +46,8 @@ Unknown fields are errors.
 | Field | Meaning |
 |---|---|
 | `name`, `version` | `name` is required. Bundles record the theme they were checked against. |
-| `image_sizes`, `srcset_widths` | Image variants for `srcset` (used from M1c). |
+| `image_sizes` | Named sizes (`width`, `height`, `crop`). Without `crop`, the image is scaled down to fit the box, and 0 means unconstrained. With `crop`, both dimensions are required and the image is cut to exactly that size. `full` is reserved for the original. Dimensions go up to 10000. See [Images](#images). |
+| `srcset_widths` | Extra widths offered in `srcset`, 1–10000. See [Images](#images). |
 | `menu_locations` | Locations menus can be assigned to; `menu` only accepts these. |
 | `content.allowed_classes` | Classes content may use (`classes` attributes). Unknown classes are rejected on save and dropped on import. |
 | `assets` | Files under `assets/` the page head includes (`head`, M2). Each must exist. |
@@ -113,6 +114,8 @@ Defaults shown; the bases, post pattern and trailing slash come from the `permal
 | `/{yyyy}/`, `/{yyyy}/{mm}/` | Date archives (when enabled) |
 | `/feed/`, `{category, tag or author archive}/feed/` | RSS 2.0 |
 | `/search/?q=…&page=n` | Search (always `noindex`, `Cache-Control: private, no-store`) |
+| `/m/{id}/{v}/{variant}/{filename}` | Media files and image variants (see [Images](#images)) |
+| Any path in `media_legacy_paths` | An imported WordPress upload URL, served with a 200 and never redirected |
 
 - **Precedence.** On the same path, date archives win, then category, tag and author bases, then pages, then posts.
 - **Pagination.** `page/1/` redirects to the archive. A page past the last one is a 404.
@@ -124,13 +127,18 @@ Defaults shown; the bases, post pattern and trailing slash come from the `permal
 - **Visibility.** Only `published` posts whose publish time has passed are shown. Drafts, scheduled, private and
   trashed posts are 404s.
 - **Request order.**
-  1. WordPress query URLs on `/` (`?p=`, `?page_id=`, `?cat=`, `?author=`, `?attachment_id=`, `?feed=`, `?s=`).
+  1. Theme assets, then `/m/` media URLs. A `/m/` URL naming no media item, or a variant the theme doesn't
+     allow, is a 404.
+  2. Legacy upload paths: an exact, case-sensitive match against `media_legacy_paths`, tried only when the last path
+     segment has a file extension. A miss carries on down this list, so a missing `/wp-content/uploads/…` file can
+     still be redirected or logged as a 404.
+  3. WordPress query URLs on `/` (`?p=`, `?page_id=`, `?cat=`, `?author=`, `?attachment_id=`, `?feed=`, `?s=`).
      They 301 to the canonical URL; switch them off with `permalinks.wpcompat_enabled`.
-  2. Exact redirects, matched against both the raw and the canonical path.
-  3. The canonical 301.
-  4. Content.
-  5. Prefix redirects (longest first, to the target as-is), then regex redirects (RE2, `$1` expands).
-  6. 404.
+  4. Exact redirects, matched against both the raw and the canonical path.
+  5. The canonical 301.
+  6. Content.
+  7. Prefix redirects (longest first, to the target as-is), then regex redirects (RE2, `$1` expands).
+  8. 404.
 - **Not-found log.** 404s are counted in memory and written to `not_found_log` every 10 seconds, or sooner at 1,000
   distinct paths.
 
@@ -161,7 +169,8 @@ or `if`.
   - Search only: `Snippet`, the matched text with `<b>` highlights.
 - **`Term`:** `ID WPID Taxonomy Slug Name Description Path Ancestors URL`.
 - **`Author`:** `ID WPID Slug Name Bio Website Social Avatar URL`.
-- **`Media`:** `ID WPID Filename Mime Width Height Alt Caption URL`.
+- **`Media`:** `ID WPID Filename Version Mime Width Height Alt Caption URL`. `URL` is the absolute URL of the
+  original; use `image` or `image_url` for sized variants.
 
 `WPID` is the WordPress id from an imported `wp:post:N`, `wp:term:N` or `wp:user:N` key, and the AFSC id otherwise.
 The class funcs use it, so CSS written for WordPress ids keeps working.
@@ -313,9 +322,81 @@ you can override: `pagination.prev`, `pagination.next`, `breadcrumbs.home`, `bre
 <a class="skip-link" href="#content">{{t "skip"}}</a>
 ```
 
-Not yet available: `head` and `footer` arrive with the SEO milestone (M2), `image` and `image_url` with media (M1c),
-`avatar` with M3, and `related_posts` and `share_links` with M5. Until `head` lands, themes write their own `<title>`,
-stylesheet links and `noindex` meta, as the default theme does.
+### image
+
+`image media "size" ["sizes"]` gives an `<img>` for a media item at one of the theme's `image_sizes`, or `"full"`
+for the original. It sets `src`, `alt`, `width` and `height`, plus `srcset` and `sizes` when there's more than one
+width to offer (see [Images](#images)). Its class is `attachment-{size} size-{size}`. The optional third argument
+replaces the default `sizes` value. A nil media item gives nothing, and an undeclared size is an error.
+
+```html
+{{with .Post.FeaturedMedia}}<figure class="post-thumbnail">{{image . "large" "(max-width: 42rem) 100vw, 42rem"}}</figure>{{end}}
+```
+
+### image_url
+
+`image_url media ["size"]` gives the absolute URL of a media item at a size, or of the original when no size is
+given. Use it where you need a URL rather than an `<img>`, for example a CSS background.
+
+```html
+<div class="hero" style="background-image: url('{{image_url .Post.FeaturedMedia "large"}}')"></div>
+```
+
+Not yet available: `head` and `footer` arrive with the SEO milestone (M2), `avatar` with M3, and `related_posts` and
+`share_links` with M5. Until `head` lands, themes write their own `<title>`, stylesheet links and `noindex` meta, as
+the default theme does.
+
+## Images
+
+Every media URL has the form `/m/{id}/{v}/{variant}/{filename}`:
+
+- **`{v}`** is the first 8 hex characters of the file's sha256. Replacing a file changes `{v}`, so these URLs are
+  cached for a year (`Cache-Control: public, max-age=31536000, immutable`). A request with an old `{v}` or filename
+  gets a 301 to the current URL.
+- **`{variant}`** is one of:
+
+  | Variant | Meaning | Allowed when |
+  |---|---|---|
+  | `orig` | Full size | Always |
+  | `w{W}` | Scaled to `W` pixels wide | `W` is in `srcset_widths`, or is the width an uncropped `image_sizes` entry gives this image |
+  | `c{W}x{H}` | Cropped to exactly `W`×`H` (focal point, else centre) | A cropped `image_sizes` entry is exactly `W`×`H` |
+
+  Any other variant is a 404, so nobody can make the server produce arbitrary sizes. Images are never enlarged.
+  Changing `image_sizes` or `srcset_widths` makes URLs that are no longer allowed 404, so re-render stored content
+  afterwards (see below).
+- **Formats.** JPEG, PNG, GIF, WebP and AVIF go through imgproxy, `orig` included, so metadata such as EXIF is always
+  stripped. The format follows the browser's `Accept` header: AVIF, then WebP, then the original format. GIFs only
+  become WebP, so animation survives. These responses carry `Vary: Accept`.
+- **Other files** (PDF, video, audio, SVG) are streamed unchanged from storage and support `Range` requests. They have
+  no sized variants. SVGs are sent with `Content-Security-Policy: sandbox`, `Content-Disposition: attachment` and
+  `nosniff`, because media shares the site's origin.
+
+**srcset and sizes.** Content images that reference the media library, and the `image` func, work out these
+attributes the same way:
+
+- **`src`** is the variant for the image's size. `full`, an unknown size, or a size the image is too small for gives
+  `orig`.
+- **`width` and `height`** are the variant's dimensions, unless the content sets its own.
+- **`srcset`** lists every `srcset_widths` entry narrower than the original, the variant's own width, and the
+  original at its full width. Cropped sizes get no `srcset`, as in WordPress.
+- **`sizes`** defaults to WordPress's `(max-width: {width}px) 100vw, {width}px`.
+- **Feeds** get an absolute `src` and no `srcset`.
+
+```html
+<img src="/m/7/ab12cd34/w1024/chart.jpg" alt="…" width="1024" height="576" class="wp-image-456 size-large"
+     srcset="/m/7/ab12cd34/w320/chart.jpg 320w, …, /m/7/ab12cd34/orig/chart.jpg 1600w"
+     sizes="(max-width: 1024px) 100vw, 1024px">
+```
+
+**Legacy upload paths.** Old WordPress URLs such as `/wp-content/uploads/2020/05/chart-300x169.jpg` that the import
+recorded keep working on the same URL with a 200, never a redirect, because email clients often don't follow
+redirects for images.
+
+- **Originals** are byte-identical to the uploaded file.
+- **Resized copies** are produced by imgproxy at the recorded size and crop.
+- **Format.** The response always has the format of the path's extension, with no `Accept` negotiation.
+- **Caching.** These URLs are cached for a day (`public, max-age=86400`), with `ETag` and `Last-Modified`.
+- **Hits** are counted in memory and added to `media_legacy_paths.hits` every 60 seconds.
 
 ## Content node overrides
 
@@ -330,7 +411,8 @@ stylesheet links and `noindex` meta, as the default theme does.
   - `.Type`, and `.Attrs`, the validated attributes. Optional keys may be absent, so use `index`.
   - `.Children`: the rendered children, with their own overrides applied.
   - `.Default`: the built-in markup for the whole node, so you can wrap it instead of rewriting it.
-  - `.Media` and `.Src` for `image` and `video` nodes that reference the media library.
+  - `.Media` and `.Src` for `image` and `video` nodes that reference the media library. `.Src` is the original's
+    URL; `.Default` already has the sized `src`, `srcset` and `sizes`.
 - **Plain text** (search and excerpts) always comes from the built-in renderer.
 - **Images inside a `figure` or `gallery`** use the parent's built-in markup. Override `figure` or `gallery` to change
   them.
@@ -345,7 +427,7 @@ stylesheet links and `noindex` meta, as the default theme does.
 ```
 
 - **When overrides apply.** Post HTML is rendered when it is imported or saved, and stored. After changing `nodes/`,
-  re-render the stored HTML:
+  `image_sizes` or `srcset_widths`, re-render the stored HTML:
 
   ```
   afsc theme check --rerender themes/mytheme

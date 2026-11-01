@@ -1,9 +1,10 @@
 {
   "name": "default",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "image_sizes": {
     "thumbnail": {"width": 150, "height": 150, "crop": true},
     "medium": {"width": 300, "height": 300, "crop": false},
+    "medium_large": {"width": 768, "height": 0, "crop": false},
     "large": {"width": 1024, "height": 1024, "crop": false}
   },
   "srcset_widths": [320, 640, 960, 1280, 1920],

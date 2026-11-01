@@ -18,8 +18,8 @@ WHERE id = $1 AND (content_html, content_text) IS DISTINCT FROM ($2, $3)`
 )
 
 // RerenderAll re-renders every post's stored content_html and content_text with the given node partials
-// (nil for built-ins). It returns how many posts changed. updated_at is left alone: this is derived data.
-func RerenderAll(ctx context.Context, db *pgxpool.Pool, parts content.Partials) (int, error) {
+// (nil for built-ins) and image sizes. It returns how many posts changed. updated_at is left alone.
+func RerenderAll(ctx context.Context, db *pgxpool.Pool, parts content.Partials, images *content.ImageSizes) (int, error) {
   media, err := queryMedia(ctx, db, sqlMedia)
   if err != nil {
     return 0, err
@@ -53,7 +53,8 @@ func RerenderAll(ctx context.Context, db *pgxpool.Pool, parts content.Partials) 
       if err != nil {
         return changed, fmt.Errorf("post %d: %w", it.id, err)
       }
-      h, txt, err := content.Render(doc, content.RenderContext{PostID: wpID(it.id, it.key, "post"), Media: lookup, Partials: parts})
+      h, txt, err := content.Render(doc, content.RenderContext{PostID: wpID(it.id, it.key, "post"), Media: lookup, Partials: parts,
+        Images: images})
       if err != nil {
         return changed, fmt.Errorf("post %d: %w", it.id, err)
       }

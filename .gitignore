@@ -4,3 +4,4 @@ app/.env
 .rustfs.env
 rustfs-data/
 rustfs-logs/
+.imgproxy.env
