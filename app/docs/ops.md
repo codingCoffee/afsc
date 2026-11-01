@@ -94,8 +94,9 @@ create the same two users with equivalent policies rather than sharing the root 
 
 ## Page cache
 
-Each `afsc serve` process keeps rendered public pages (posts, pages, archives, home and feeds) in an in-process LRU,
-and sends cache headers so a CDN in front can hold them too. AFSC never calls a CDN purge API.
+Each `afsc serve` process keeps rendered public pages (posts, pages, archives, home, feeds, sitemaps and the SEO text
+files) in an in-process LRU, and sends cache headers so a CDN in front can hold them too.
+AFSC never calls a CDN purge API.
 
 - **Size.** `AFSC_PAGE_CACHE_MB` (default 128) bounds the memory per process; least recently used pages are evicted
   first, and a single page over 2 MB is never stored. Set it to 0 to turn the in-process cache off. Count it in the
@@ -127,6 +128,36 @@ purges its cache when a message arrives.
 - **CDN.** A CDN in front keeps serving its copy until the TTL runs out (plus `stale-while-revalidate` while it
   refetches), so it catches up within one TTL of a change. Lower the TTL if that's too long, and don't let the CDN
   override AFSC's `Cache-Control`.
+
+### Sitemaps, robots.txt and llms.txt
+
+Sitemaps, `robots.txt`, `llms.txt` and the IndexNow key file are built on request and stored in the page cache with
+the page TTL, like pages. Purges are per sitemap type: every page of one type (`post-sitemap.xml`,
+`post-sitemap2.xml`, …) shares one cache group.
+
+| Change | Also purges |
+|---|---|
+| A post published, edited or unpublished | The post, page, category, tag and author sitemaps it affects (the page sitemap because the home entry's `lastmod` moves), the video sitemap if it has videos, and the index |
+| A page | The page sitemap, `llms.txt` and the index |
+| A term | Its taxonomy's sitemap, the video sitemap, the index, and `llms.txt` for categories |
+| An author | The author sitemap and the index |
+| Settings, imports, `--rerender` | Everything |
+
+- **Cost.** A cache miss on any sitemap reads the whole list for its type (one small row per published post or page,
+  without content), then the images of that one page. A miss on the index reads every type's list. With a 60 second TTL that's at most one rebuild per file per minute
+  per replica.
+- **Size.** `seo.sitemaps.page_size` (default 1000, at most 50,000) is the number of URLs per file. Keep the default
+  unless a crawler struggles with the file size: each URL can carry many `image:image` entries.
+- **Search Console.** Submit `https://{site}/sitemap_index.xml`. The file names match Yoast's, so a migrated
+  site's existing submission keeps working.
+- **Validation.** `scripts/check-sitemaps.sh` (needs `xmllint` and `AFSC_TEST_DATABASE_URL`) generates the sample
+  bundle's sitemaps and validates them against the vendored XSDs in `testdata/xsd`.
+
+### IndexNow key
+
+Set `seo.indexnow` to `{"enabled": true, "key": "…"}` (8 to 128 letters, digits or dashes). AFSC then serves the key
+at `/{key}.txt` so search engines can verify it. Generate a key with `openssl rand -hex 16`. To rotate it, change the
+setting; the old file stops being served at once. AFSC doesn't send pings yet; they arrive with publishing (M3).
 
 ## General
 

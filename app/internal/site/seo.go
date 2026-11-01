@@ -22,7 +22,7 @@ FROM seo WHERE entity_type = $1 AND entity_id = $2`
 	// One row per video URL; manual rows win over imported ones, which win over auto-detected ones.
 	sqlPostVideos = `
 SELECT title, description, url, provider, external_id, thumbnail_url, coalesce(thumbnail_media_id, 0),
-       coalesce(duration_seconds, 0), upload_date
+       coalesce(duration_seconds, 0), upload_date, family_friendly
 FROM (SELECT DISTINCT ON (url) * FROM post_videos WHERE post_id = $1
       ORDER BY url, CASE source WHEN 'manual' THEN 0 WHEN 'import' THEN 1 ELSE 2 END) v
 ORDER BY id`
@@ -61,18 +61,36 @@ func (st *Site) postVideos(ctx context.Context, postID int64) ([]*videoRow, erro
 	defer rows.Close()
 	var out []*videoRow
 	for rows.Next() {
-		v := &videoRow{}
-		if err := rows.Scan(&v.Name, &v.Description, &v.url, &v.provider, &v.externalID, &v.thumbURL, &v.thumbMedia,
-			&v.Duration, &v.UploadDate); err != nil {
+		v, err := scanVideo(rows)
+		if err != nil {
 			return nil, err
-		}
-		v.EmbedURL = seo.EmbedURL(v.provider, v.externalID)
-		if v.EmbedURL == "" {
-			v.ContentURL = v.url
 		}
 		out = append(out, v)
 	}
 	return out, rows.Err()
+}
+
+// scanVideo scans the columns of sqlPostVideos, after any leading columns in pre.
+func scanVideo(rows pgx.Rows, pre ...any) (*videoRow, error) {
+	v := &videoRow{}
+	dest := append(pre, &v.Name, &v.Description, &v.url, &v.provider, &v.externalID, &v.thumbURL, &v.thumbMedia,
+		&v.Duration, &v.UploadDate, &v.FamilyFriendly)
+	if err := rows.Scan(dest...); err != nil {
+		return nil, err
+	}
+	v.EmbedURL = seo.EmbedURL(v.provider, v.externalID)
+	if v.EmbedURL == "" {
+		v.ContentURL = v.url
+	}
+	return v, nil
+}
+
+// resolveThumb sets the thumbnail the JSON-LD and the video sitemap share: the thumbnail media, else the stored URL.
+func (v *videoRow) resolveThumb(snap *snapshot, media map[int64]mediaRow) {
+	v.ThumbnailURL = v.thumbURL
+	if m, ok := media[v.thumbMedia]; ok && v.thumbMedia != 0 {
+		v.ThumbnailURL = snap.mediaView(m).URL
+	}
 }
 
 func (st *Site) firstImageID(ctx context.Context, postID int64) (int64, error) {
@@ -157,11 +175,7 @@ func (st *Site) buildHead(ctx context.Context, snap *snapshot, d *theme.PageData
 		}
 	}
 	for _, v := range videos {
-		if m := view(v.thumbMedia); m != nil {
-			v.ThumbnailURL = m.URL
-		} else {
-			v.ThumbnailURL = v.thumbURL
-		}
+		v.resolveThumb(snap, media)
 		in.Videos = append(in.Videos, v.Video)
 	}
 	in.Crumbs = st.theme.Breadcrumbs(d)

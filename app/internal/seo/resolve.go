@@ -30,13 +30,14 @@ type Override struct {
 
 // Video is one post_videos row, with the thumbnail already resolved to an absolute URL.
 type Video struct {
-	Name         string
-	Description  string
-	ThumbnailURL string
-	EmbedURL     string
-	ContentURL   string
-	Duration     int // seconds, 0 when unknown
-	UploadDate   *time.Time
+	Name           string
+	Description    string
+	ThumbnailURL   string
+	EmbedURL       string
+	ContentURL     string
+	Duration       int // seconds, 0 when unknown
+	UploadDate     *time.Time
+	FamilyFriendly *bool
 }
 
 // Input is everything Build needs about one page.
@@ -229,31 +230,43 @@ func (in *Input) canonical(ov *Override) string {
 	case theme.KindSearch, theme.Kind404, theme.Kind410:
 		return ""
 	}
-	if c := ov.Canonical; c != "" {
-		if strings.HasPrefix(c, "/") && !strings.HasPrefix(c, "//") {
-			return d.Site.URL + c
-		}
-		if strings.HasPrefix(c, "https://") || strings.HasPrefix(c, "http://") {
-			return c
-		}
+	return cmp.Or(OverrideCanonical(d.Site.URL, ov.Canonical), d.Request.URL)
+}
+
+// OverrideCanonical makes an entity's canonical override absolute. It returns "" when c is unset or unusable.
+func OverrideCanonical(siteURL, c string) string {
+	switch {
+	case strings.HasPrefix(c, "/") && !strings.HasPrefix(c, "//"):
+		return siteURL + c
+	case strings.HasPrefix(c, "https://") || strings.HasPrefix(c, "http://"):
+		return c
 	}
-	return d.Request.URL
+	return ""
 }
 
 // Indexable reports whether the page may be indexed: what the robots meta says and what sitemaps include.
 func (in *Input) Indexable(ov *Override) bool {
 	d := in.Page
-	switch d.Kind {
-	case theme.KindSearch, theme.Kind404, theme.Kind410:
-		return false
-	}
 	if d.Request.NoIndex {
 		return false
 	}
-	if ov != nil && ov.NoIndex != nil {
-		return !*ov.NoIndex
+	var noIndex *bool
+	if ov != nil {
+		noIndex = ov.NoIndex
 	}
-	return !(d.Kind == theme.KindTag && in.Settings.SEO.TagNoindex)
+	return IndexableKind(d.Kind, noIndex, in.Settings)
+}
+
+// IndexableKind is the entity part of Indexable: the noindex override, else the type default.
+func IndexableKind(kind string, noIndex *bool, s *settings.All) bool {
+	switch kind {
+	case theme.KindSearch, theme.Kind404, theme.Kind410:
+		return false
+	}
+	if noIndex != nil {
+		return !*noIndex
+	}
+	return !(kind == theme.KindTag && s.SEO.TagNoindex)
 }
 
 func (in *Input) robots(ov *Override) string {

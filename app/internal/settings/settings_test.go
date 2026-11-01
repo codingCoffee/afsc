@@ -39,11 +39,37 @@ func TestDecodeRejects(t *testing.T) {
 		`{"seo":{"social_profiles":["http://x.com/a"]}}`:   "https",
 		`{"cache":{"page_ttl_seconds":86401}}`:             "cache.page_ttl_seconds",
 		`{"cache":{"page_ttl_seconds":-1}}`:                "cache.page_ttl_seconds",
+		`{"seo":{"llms_txt":{"mode":"on"}}}`:               "seo.llms_txt.mode",
+		`{"seo":{"llms_txt":{"mode":"custom"}}}`:           "seo.llms_txt.body",
+		`{"seo":{"sitemaps":{"page_size":0}}}`:             "seo.sitemaps.page_size",
+		`{"seo":{"sitemaps":{"page_size":50001}}}`:         "seo.sitemaps.page_size",
+		`{"seo":{"indexnow":{"enabled":true}}}`:            "seo.indexnow.key",
+		`{"seo":{"indexnow":{"key":"short"}}}`:             "seo.indexnow.key",
+		`{"seo":{"indexnow":{"key":"../../etc/passwd"}}}`:  "seo.indexnow.key",
+		`{"seo":{"sitemaps":{"layout":"x"}}}`:              "unknown field",
 	}
 	for in, want := range cases {
 		if _, _, err := Decode([]byte(in)); err == nil || !strings.Contains(err.Error(), want) {
 			t.Errorf("Decode(%s) error = %v, want it to contain %q", in, err, want)
 		}
+	}
+}
+
+func TestSEOFileSettings(t *testing.T) {
+	all, _, err := Decode([]byte(`{"seo":{"separator":"|"}}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if s := all.SEO; s.Sitemaps.PageSize != 1000 || s.LLMsTxt.Mode != "off" || s.IndexNow.Enabled || s.RobotsTxt != "" {
+		t.Errorf("an seo group without the new keys must keep their defaults: %+v", s)
+	}
+	all, _, err = Decode([]byte(`{"seo":{"sitemaps":{"page_size":2},"llms_txt":{"mode":"custom","body":"# X"},` +
+		`"indexnow":{"enabled":true,"key":"0123abcd-ef"}}}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if s := all.SEO; s.Sitemaps.PageSize != 2 || s.LLMsTxt.Body != "# X" || s.IndexNow.Key != "0123abcd-ef" {
+		t.Errorf("seo = %+v", s)
 	}
 }
 

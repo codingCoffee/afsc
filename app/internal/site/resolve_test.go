@@ -137,6 +137,9 @@ func resolveStr(t *testing.T, st *Site, target string) string {
 	if res.Query != "" {
 		s += " q=" + res.Query
 	}
+	if res.File != "" {
+		s += " file=" + res.File
+	}
 	return s
 }
 
@@ -259,6 +262,46 @@ func TestResolve(t *testing.T) {
 		run(t, testSite(t, func(a *settings.All) { a.Permalinks.PostPattern = "/archives/{id}/" }), []tc{
 			{"/archives/123/", "200 single id=123"},
 			{"/archives/124/", "404 404"},
+		})
+	})
+
+	t.Run("seo files", func(t *testing.T) {
+		seoFiles := []tc{
+			{"/sitemap.xml", "301 /sitemap_index.xml"},
+			{"/sitemap_index.xml", "200 sitemap file=index"},
+			{"/post-sitemap.xml", "200 sitemap file=post"},
+			{"/post-sitemap2.xml", "200 sitemap page=2 file=post"},
+			{"/page-sitemap.xml", "200 sitemap file=page"},
+			{"/category-sitemap.xml", "200 sitemap file=category"},
+			{"/post_tag-sitemap12.xml", "200 sitemap page=12 file=post_tag"},
+			{"/author-sitemap.xml", "200 sitemap file=author"},
+			{"/video-sitemap.xml", "200 sitemap file=video"},
+			{"/robots.txt", "200 text file=/robots.txt"},
+			{"/post-sitemap1.xml", "404 404"},
+			{"/post-sitemap0.xml", "404 404"},
+			{"/post-sitemap01.xml", "404 404"},
+			{"/tag-sitemap.xml", "404 404"},
+			{"/Sitemap_Index.xml", "404 404"},
+			{"/sitemap_index.xml/", "404 404"},
+			{"/llms.txt", "404 404"},
+			{"/0123abcd-ef.txt", "404 404"},
+		}
+		run(t, testSite(t, nil), seoFiles)
+		// sitemap paths win over redirects and the trailing-slash policy
+		st := testSite(t, func(a *settings.All) { a.Permalinks.TrailingSlash = "never" })
+		st.lk.(*fakeLookup).exact = append(st.lk.(*fakeLookup).exact,
+			&Redirect{ID: 9, Source: "/robots.txt", Match: "exact", Target: "/about/", Status: 301})
+		run(t, st, seoFiles[:10])
+		run(t, testSite(t, func(a *settings.All) {
+			a.SEO.LLMsTxt.Mode = "auto"
+			a.SEO.IndexNow = settings.IndexNow{Enabled: true, Key: "0123abcd-ef"}
+		}), []tc{
+			{"/llms.txt", "200 text file=/llms.txt"},
+			{"/0123abcd-ef.txt", "200 text file=/0123abcd-ef.txt"},
+			{"/0123ABCD-EF.txt", "404 404"},
+		})
+		run(t, testSite(t, func(a *settings.All) { a.SEO.IndexNow = settings.IndexNow{Key: "0123abcd-ef"} }), []tc{
+			{"/0123abcd-ef.txt", "404 404"},
 		})
 	})
 

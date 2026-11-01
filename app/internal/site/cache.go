@@ -13,6 +13,7 @@ import (
 var cacheableKinds = map[string]bool{
 	theme.KindSingle: true, theme.KindPage: true, theme.KindFrontPage: true, theme.KindHome: true, theme.KindPostsPage: true,
 	theme.KindCategory: true, theme.KindTag: true, theme.KindAuthor: true, theme.KindDate: true, kindFeed: true,
+	kindSitemap: true, kindText: true,
 }
 
 // servePublic runs the resolver behind the page cache. Only 200s of cacheable kinds are stored; 404, 410 and

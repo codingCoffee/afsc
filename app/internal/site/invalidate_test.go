@@ -33,6 +33,10 @@ func TestGroup(t *testing.T) {
 		{Result{Kind: kindFeed, FeedOf: "home"}, "/feed/", "/"},
 		{Result{Kind: kindFeed, FeedOf: "category", ID: 5}, "/category/markets/feed/", "/category/markets/"},
 		{Result{Kind: kindFeed, FeedOf: "author", ID: 2}, "/author/author-a/feed/", "/author/author-a/"},
+		{Result{Kind: kindSitemap, File: "index"}, "/sitemap_index.xml", "/sitemap_index.xml"},
+		{Result{Kind: kindSitemap, File: "post", Paged: 3}, "/post-sitemap3.xml", "/post-sitemap.xml"},
+		{Result{Kind: kindSitemap, File: "post_tag", Paged: 1}, "/post_tag-sitemap.xml", "/post_tag-sitemap.xml"},
+		{Result{Kind: kindText, File: "/robots.txt"}, "/robots.txt", "/robots.txt"},
 	}
 	for _, c := range cases {
 		if got := s.group(c.res, c.path); got != c.want {
@@ -49,11 +53,19 @@ func TestPostChange(t *testing.T) {
 	page := func(id, parent int64, slug string) *PostState {
 		return &PostState{Ref: PostRef{ID: id, Type: "page", Slug: slug, Status: "published", PublishedAt: &testPub, ParentID: parent}}
 	}
-	postArchives := []string{"/", "/2021/", "/2021/03/", "/author/author-a/", "/category/markets/", "/category/markets/stocks/", "/tag/example/"}
-	with := func(extra ...string) []string {
-		out := slices.Concat(postArchives, extra)
+	postMaps := []string{"/sitemap_index.xml", "/page-sitemap.xml", "/post-sitemap.xml", "/category-sitemap.xml", "/author-sitemap.xml"}
+	postArchives := slices.Concat([]string{"/", "/2021/", "/2021/03/", "/author/author-a/", "/category/markets/",
+		"/category/markets/stocks/", "/tag/example/", "/post_tag-sitemap.xml"}, postMaps)
+	sorted := func(lists ...[]string) []string {
+		out := slices.Concat(lists...)
 		slices.Sort(out)
 		return out
+	}
+	with := func(extra ...string) []string { return sorted(postArchives, extra) }
+	pageMaps := []string{"/sitemap_index.xml", "/page-sitemap.xml", "/llms.txt"}
+	withVideos := func(p *PostState) *PostState {
+		p.Videos = true
+		return p
 	}
 	all := "ALL"
 	cases := []struct {
@@ -71,19 +83,25 @@ func TestPostChange(t *testing.T) {
 		{"draft edit", post("p", "draft"), post("p", "draft"), nil, []string{}, false},
 		{"posts page", nil, post("p", "published", 6, 8), func(s *snapshot) { s.postsPageID, s.homeID = 4, 2 },
 			with("/blog/", "/p/"), false},
-		{"leaf page", page(5, 2, "intro"), page(5, 2, "intro"), nil, []string{"/about/intro/"}, true},
-		{"page with children", page(3, 2, "team"), page(3, 2, "team"), nil, []string{"/about/team/", "/about/team/intro/"}, true},
+		{"leaf page", page(5, 2, "intro"), page(5, 2, "intro"), nil, sorted(pageMaps, []string{"/about/intro/"}), true},
+		{"page with children", page(3, 2, "team"), page(3, 2, "team"), nil,
+			sorted(pageMaps, []string{"/about/team/", "/about/team/intro/"}), true},
 		{"page with children moved", page(3, 2, "team"), page(3, 2, "people"), nil, []string{all}, true},
-		{"leaf page moved", page(5, 2, "intro"), page(5, 2, "welcome"), nil, []string{"/about/intro/", "/about/welcome/"}, true},
+		{"leaf page moved", page(5, 2, "intro"), page(5, 2, "welcome"), nil,
+			sorted(pageMaps, []string{"/about/intro/", "/about/welcome/"}), true},
 		{"front page", page(2, 0, "about"), page(2, 0, "about"), func(s *snapshot) { s.homeID = 2 },
-			[]string{"/", "/about/intro/", "/about/team/", "/about/team/intro/"}, true},
+			sorted(pageMaps, []string{"/", "/about/intro/", "/about/team/", "/about/team/intro/"}), true},
 		{"menu-linked post moved", post("old-post", "published", 6), post("new-post", "published", 6), func(s *snapshot) {
 			s.menus["primary"] = []*theme.MenuItem{{URL: "https://blog.example.com/x/", Children: []*theme.MenuItem{
 				{URL: "https://blog.example.com/old-post/"}}}}
 		}, []string{all}, false},
 		{"menu-linked post edited in place", post("p", "published", 6), post("p", "published", 6), func(s *snapshot) {
 			s.menus["primary"] = []*theme.MenuItem{{URL: "https://blog.example.com/p/"}}
-		}, []string{"/", "/2021/", "/2021/03/", "/author/author-a/", "/category/markets/", "/category/markets/stocks/", "/p/"}, false},
+		}, sorted(postMaps, []string{"/", "/2021/", "/2021/03/", "/author/author-a/", "/category/markets/",
+			"/category/markets/stocks/", "/p/"}), false},
+		{"post with videos", nil, withVideos(post("p", "published", 6, 8)), nil, with("/p/", "/video-sitemap.xml"), false},
+		{"page with videos", nil, withVideos(page(5, 2, "intro")), nil,
+			sorted(pageMaps, []string{"/about/intro/", "/video-sitemap.xml"}), true},
 	}
 	for _, c := range cases {
 		s := testSite(t, nil).snap.Load()

@@ -140,6 +140,10 @@ func (st *Site) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	snap := st.snap.Load()
+	if _, ok := snap.seoFile(r.URL.Path); ok {
+		st.servePublic(w, r, snap)
+		return
+	}
 	// §6.1 step 3: media is served before redirects and canonicalisation, because legacy paths are case-sensitive
 	switch {
 	case strings.HasPrefix(r.URL.Path, media.Prefix):
@@ -167,6 +171,16 @@ func (st *Site) render(snap *snapshot, r *http.Request, res Result, query string
 		return &response{status: res.Status, header: http.Header{"Location": {res.Location}}}, nil
 	case res.Kind == kindFeed:
 		return st.renderFeed(r, snap, res)
+	case res.Kind == kindSitemap || res.Kind == kindText:
+		render := st.renderText
+		if res.Kind == kindSitemap {
+			render = st.renderSitemap
+		}
+		resp, err := render(r.Context(), snap, res)
+		if resp != nil || err != nil {
+			return resp, err
+		}
+		return st.renderPage(r, snap, notFound(), query)
 	}
 	return st.renderPage(r, snap, res, query)
 }

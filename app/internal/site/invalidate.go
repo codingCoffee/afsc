@@ -36,6 +36,11 @@ func (s *snapshot) group(res Result, path string) string {
 			return s.authorArchive(res.ID)
 		}
 		return "/"
+	case kindSitemap:
+		if res.File == "index" {
+			return sitemapIndexPath
+		}
+		return sitemapGroup(res.File)
 	}
 	return path
 }
@@ -59,6 +64,7 @@ type PostState struct {
 	Ref       PostRef
 	TermIDs   []int64
 	AuthorIDs []int64
+	Videos    bool // has post_videos rows, so it may be in the video sitemap
 }
 
 type pathSet map[string]struct{}
@@ -98,6 +104,7 @@ func (s *snapshot) postChange(before, after *PostState) Event {
 			continue
 		}
 		paths[i] = s.refPath(&p.Ref)
+		s.addSitemaps(set, p)
 		if p.Ref.Type == "page" {
 			page = true
 			set.add(paths[i])
@@ -138,6 +145,35 @@ func (s *snapshot) postChange(before, after *PostState) Event {
 		}
 	}
 	return set.event(page)
+}
+
+// addSitemaps adds the sitemaps that list a published post or page or move their lastmod: its own type's (posts
+// also move the home entry's lastmod in the page sitemap), its archives', the video sitemap and the index.
+func (s *snapshot) addSitemaps(set pathSet, p *PostState) {
+	set.add(sitemapIndexPath, sitemapGroup("page"))
+	if p.Videos {
+		set.add(sitemapGroup("video"))
+	}
+	if p.Ref.Type == "page" {
+		set.add(llmsPath)
+		return
+	}
+	set.add(sitemapGroup("post"))
+	for _, id := range p.TermIDs {
+		if t := s.terms[id]; t != nil {
+			set.add(termSitemap(t.Taxonomy))
+		}
+	}
+	if len(p.AuthorIDs) > 0 {
+		set.add(sitemapGroup("author"))
+	}
+}
+
+func termSitemap(taxonomy string) string {
+	if taxonomy == "tag" {
+		return sitemapGroup("post_tag")
+	}
+	return sitemapGroup("category")
 }
 
 // refPath is the path a post or page has with its own slug and parent, which may differ from the snapshot's copy.
@@ -202,15 +238,19 @@ SELECT pa.post_id FROM post_authors pa JOIN posts p ON p.id = pa.post_id
 WHERE pa.author_id = $1 AND p.status = 'published' LIMIT $2`
 )
 
-// TermChange is the purge event for a term: its archive, its ancestors' and descendants' archives, and every page
-// showing a post filed under it. A slug or parent change needs the event computed both before and after the
-// change (see Event.Merge). A term linked from a menu purges everything.
+// TermChange is the purge event for a term: its archives, every page showing a post filed under it, and the sitemaps.
+// Compute it before and after a slug or parent change (see Event.Merge). A term linked from a menu purges everything.
 func (st *Site) TermChange(ctx context.Context, id int64) (Event, error) {
 	s := st.snap.Load()
 	ids := s.termDescendants(id)
 	set := pathSet{}
+	// a slug change moves post URLs under a {category} pattern, and the video sitemap lists those URLs
+	set.add(sitemapIndexPath, sitemapGroup("video"))
 	for _, t := range s.termChain(id) {
-		set.add(s.termArchive(t.ID))
+		set.add(s.termArchive(t.ID), termSitemap(t.Taxonomy))
+		if t.Taxonomy == "category" {
+			set.add(llmsPath)
+		}
 	}
 	for _, d := range ids {
 		path := s.termArchive(d)
@@ -222,7 +262,8 @@ func (st *Site) TermChange(ctx context.Context, id int64) (Event, error) {
 	return st.withPosts(ctx, s, set, sqlTermPosts, ids)
 }
 
-// AuthorChange is the purge event for an author: the archive and every page showing one of their posts.
+// AuthorChange is the purge event for an author: the archive, every page showing one of their posts, and the
+// sitemaps.
 func (st *Site) AuthorChange(ctx context.Context, id int64) (Event, error) {
 	s := st.snap.Load()
 	path := s.authorArchive(id)
@@ -230,7 +271,7 @@ func (st *Site) AuthorChange(ctx context.Context, id int64) (Event, error) {
 		return Event{Refresh: true, All: true}, nil
 	}
 	set := pathSet{}
-	set.add(path)
+	set.add(path, sitemapIndexPath, sitemapGroup("author"))
 	return st.withPosts(ctx, s, set, sqlAuthorPosts, id)
 }
 

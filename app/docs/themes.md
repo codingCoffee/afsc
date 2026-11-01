@@ -115,6 +115,11 @@ Defaults shown; the bases, post pattern and trailing slash come from the `permal
 | `/search/?q=…&page=n` | Search (always `noindex`, `Cache-Control: private, no-store`) |
 | `/m/{id}/{v}/{variant}/{filename}` | Media files and image variants (see [Images](#images)) |
 | Any path in `media_legacy_paths` | An imported WordPress upload URL, served with a 200 and never redirected |
+| `/sitemap_index.xml` | Sitemap index; `/sitemap.xml` redirects here |
+| `/{post,page,category,post_tag,author,video}-sitemap.xml`, then `…-sitemap2.xml`, `…-sitemap3.xml` | Sitemaps (see [Sitemaps and text files](#sitemaps-and-text-files)) |
+| `/robots.txt` | `seo.robots_txt`, or allow-all plus the `Sitemap:` line |
+| `/llms.txt` | Only when `seo.llms_txt.mode` is `auto` or `custom` |
+| `/{key}.txt` | The IndexNow key file, only when `seo.indexnow.enabled` |
 
 - **Precedence.** On the same path, date archives win, then category, tag and author bases, then pages, then posts.
 - **Pagination.** `page/1/` redirects to the archive. A page past the last one is a 404.
@@ -126,7 +131,8 @@ Defaults shown; the bases, post pattern and trailing slash come from the `permal
 - **Visibility.** Only `published` posts whose publish time has passed are shown. Drafts, scheduled, private and
   trashed posts are 404s.
 - **Request order.**
-  1. Theme assets, then `/m/` media URLs. A `/m/` URL naming no media item, or a variant the theme doesn't
+  1. Theme assets, then the sitemap and text-file paths above (exact, case-sensitive matches; they win over redirects
+     and the trailing-slash policy), then `/m/` media URLs. A `/m/` URL naming no media item, or a variant the theme doesn't
      allow, is a 404.
   2. Legacy upload paths: an exact, case-sensitive match against `media_legacy_paths`, tried only when the last path
      segment has a file extension. A miss carries on down this list, so a missing `/wp-content/uploads/…` file can
@@ -140,6 +146,53 @@ Defaults shown; the bases, post pattern and trailing slash come from the `permal
   8. 404.
 - **Not-found log.** 404s are counted in memory and written to `not_found_log` every 10 seconds, or sooner at 1,000
   distinct paths.
+
+## Sitemaps and text files
+
+These are built in and not themable. They follow the Yoast layout, so existing Search Console submissions keep
+working.
+
+- **Index.** `/sitemap_index.xml` lists every non-empty sitemap page, with the newest `lastmod` on it. A type with no
+  URLs is left out of the index, and its sitemap returns 404.
+- **Paging.** Each file holds `seo.sitemaps.page_size` URLs (default 1000). Page 1 has no number (`post-sitemap.xml`);
+  later pages are `post-sitemap2.xml` and so on. Posts and pages are ordered oldest first by publish time, then id,
+  so new posts land on the last page. Archives are ordered by id.
+- **What each type lists.**
+
+  | Sitemap | URLs | `lastmod` |
+  |---|---|---|
+  | `post` | Published posts | `updated_at` |
+  | `page` | Published pages. When the home page shows the latest posts, `/` comes first | `updated_at`; for `/`, the newest post's |
+  | `category`, `post_tag` | Archives with at least one published post (a category counts its subcategories' posts) | The newest post's `updated_at` |
+  | `author` | Archives with at least one published post. None when author archives are off | The newest post's `updated_at` |
+  | `video` | Published posts and pages with a video that has a thumbnail, title and description | `updated_at` |
+
+- **Left out.** Drafts, pending, scheduled, private and trashed posts, and posts whose publish time hasn't come; noindex entities (their own `robots_noindex`, else the
+  type default such as `seo.tag_noindex`); entities whose `canonical` override points at a different URL (compared
+  as an absolute URL, so a self-canonical with another trailing slash or scheme also counts as different); empty
+  archives. There are no date archive sitemaps.
+- **Images.** Post and page entries carry `image:image` for the featured image and every image node in the content
+  (galleries included) that comes from the media library, as absolute `/m/` original URLs. Images given only as an
+  external `src` are skipped. Only `image:loc` is written; Google ignores the other image tags.
+- **Videos.** One `video:video` per video, using the same thumbnail as the page's JSON-LD (the thumbnail media,
+  else the stored thumbnail URL). YouTube and Vimeo videos get `video:player_loc`; others get `video:content_loc`.
+  Titles are cut to 100 characters and descriptions to 2,048. A duration over 8 hours is left out.
+- **robots.txt.** `seo.robots_txt` is served exactly as written. When it's empty, the default is:
+
+  ```
+  User-agent: *
+  Disallow:
+
+  Sitemap: https://blog.example.com/sitemap_index.xml
+  ```
+
+- **llms.txt.** Off by default. `custom` serves `seo.llms_txt.body` as written. `auto` follows
+  [llmstxt.org](https://llmstxt.org): the site title as the heading, the tagline as a quote, then a Pages list
+  (top-level pages) and a Categories list (top-level categories, with their descriptions). It applies the sitemap
+  rules, so noindex, canonicalized-away and empty entries stay out.
+- **IndexNow key file.** With `seo.indexnow.enabled`, `/{key}.txt` returns the key. Pings aren't sent yet; they
+  arrive with publishing in M3.
+- **Caching.** All of these are cached and purged like pages (see [Page cache](#page-cache)).
 
 ## Page data
 
@@ -508,7 +561,7 @@ AFSC keeps rendered pages in memory and sends cache headers so a CDN can hold th
 
 | Response | Cached in memory | `Cache-Control` |
 |---|---|---|
-| 200 for `home`, `front_page`, `posts_page`, `single`, `page`, `category`, `tag`, `author`, `date` and feeds | Yes | `public, max-age=T, s-maxage=T, stale-while-revalidate=T`, plus a strong `ETag` (`304` on `If-None-Match`) |
+| 200 for `home`, `front_page`, `posts_page`, `single`, `page`, `category`, `tag`, `author`, `date`, feeds, sitemaps, `robots.txt`, `llms.txt` and the IndexNow key file | Yes | `public, max-age=T, s-maxage=T, stale-while-revalidate=T`, plus a strong `ETag` (`304` on `If-None-Match`) |
 | 404, 410 and redirects | No | The same public value, without an `ETag` |
 | `search` | No | `private, no-store` |
 | Theme assets, `/m/` media and legacy upload paths | No | Their own headers (above) |
@@ -525,7 +578,7 @@ What this means for templates:
 - **Requests that skip the cache:** an `Authorization` header, any cookie named `afsc_*` (reserved for previews and
   commenters), a `preview` parameter, and the WordPress-style `/?p=` parameters handled by the compatibility layer.
 - **Purging.** Changing a post purges its URL, the home page, the posts page and its date, term and author archives,
-  each with every page number and its feed. Settings, menus, imports and `--rerender` purge everything. In dev mode,
+  each with every page number and its feed, plus the sitemaps that list it and the sitemap index. Settings, menus, imports and `--rerender` purge everything. In dev mode,
   a theme reload purges everything.
 
 ## afsc theme check

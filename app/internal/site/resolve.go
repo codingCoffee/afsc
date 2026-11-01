@@ -21,6 +21,7 @@ type Result struct {
 	Year     int
 	Month    int
 	Query    string // search
+	File     string // sitemaps: the type or "index"; text files: the path
 }
 
 const kindFeed = "feed"
@@ -36,11 +37,15 @@ func redirectTo(rd *Redirect, target string) Result {
 	return Result{Status: rd.Status, Location: target}
 }
 
-// resolve runs the §6.1 order: wpcompat, exact redirects, canonical form, content, prefix/regex redirects, 404.
+// resolve runs the §6.1 order: SEO files, wpcompat, exact redirects, canonical form, content, prefix/regex
+// redirects, 404.
 func (st *Site) resolve(ctx context.Context, snap *snapshot, r *http.Request) (Result, error) {
 	raw := r.URL.Path
 	if raw == "/admin" || strings.HasPrefix(raw, "/admin/") {
 		return notFound(), nil
+	}
+	if res, ok := snap.seoFile(raw); ok {
+		return res, nil
 	}
 	canon := Canonical(raw, snap.settings.Permalinks.TrailingSlash)
 	q := r.URL.Query()

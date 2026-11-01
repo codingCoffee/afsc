@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/url"
+	"regexp"
 	"slices"
 	"strings"
 	"time"
@@ -83,6 +84,24 @@ type SEO struct {
 	DefaultImage         *Ref              `json:"default_image_media"`
 	TagNoindex           bool              `json:"tag_noindex"`
 	AutoDescription      bool              `json:"auto_description"`
+	RobotsTxt            string            `json:"robots_txt"`
+	LLMsTxt              LLMsTxt           `json:"llms_txt"`
+	Sitemaps             Sitemaps          `json:"sitemaps"`
+	IndexNow             IndexNow          `json:"indexnow"`
+}
+
+type LLMsTxt struct {
+	Mode string `json:"mode"` // off, auto or custom
+	Body string `json:"body"`
+}
+
+type Sitemaps struct {
+	PageSize int `json:"page_size"`
+}
+
+type IndexNow struct {
+	Enabled bool   `json:"enabled"`
+	Key     string `json:"key"`
 }
 
 type Discussion struct {
@@ -129,6 +148,8 @@ func Defaults() All {
 			},
 			DescriptionTemplates: map[string]string{},
 			KnowledgeGraph:       KnowledgeGraph{Type: "organization"},
+			LLMsTxt:              LLMsTxt{Mode: "off"},
+			Sitemaps:             Sitemaps{PageSize: 1000},
 		},
 		Discussion: Discussion{CommentsEnabled: true, ThreadDepth: 3},
 		Cache:      Cache{PageTTLSeconds: 60},
@@ -181,6 +202,9 @@ func (a All) Group(key string) any {
 	return nil
 }
 
+// indexNowKey is the key format the IndexNow protocol allows.
+var indexNowKey = regexp.MustCompile(`^[a-zA-Z0-9-]{8,128}$`)
+
 var postTokens = []string{"{slug}", "{year}", "{month}", "{day}", "{id}", "{category}"}
 
 func (a All) Validate() error {
@@ -232,6 +256,18 @@ func (a All) Validate() error {
 		if u, err := url.Parse(s); err != nil || u.Scheme != "https" || u.Host == "" {
 			bad("seo.social_profiles: %q must be an https url", s)
 		}
+	}
+	switch l := a.SEO.LLMsTxt; {
+	case l.Mode != "off" && l.Mode != "auto" && l.Mode != "custom":
+		bad("seo.llms_txt.mode: must be off, auto or custom")
+	case l.Mode == "custom" && strings.TrimSpace(l.Body) == "":
+		bad("seo.llms_txt.body: required when mode is custom")
+	}
+	if n := a.SEO.Sitemaps.PageSize; n < 1 || n > 50000 {
+		bad("seo.sitemaps.page_size: must be 1-50000")
+	}
+	if in := a.SEO.IndexNow; (in.Enabled || in.Key != "") && !indexNowKey.MatchString(in.Key) {
+		bad("seo.indexnow.key: must be 8-128 letters, digits or dashes")
 	}
 	if a.Discussion.ThreadDepth < 1 || a.Discussion.ThreadDepth > 10 {
 		bad("discussion.thread_depth: must be 1-10")
