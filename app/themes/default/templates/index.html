@@ -1,0 +1,14 @@
+{{define "content"}}
+{{- if .Post}}
+<article class="{{post_class .Post}}">
+  <header class="entry-header"><h1 class="entry-title">{{.Post.Title}}</h1></header>
+  {{- if not .Pagination}}
+  <div class="entry-content">{{.Post.ContentHTML}}</div>
+  {{- end}}
+</article>
+{{- end}}
+{{- if .Pagination}}{{template "parts/loop.html" .}}{{end}}
+{{- if eq .Kind "404" "410"}}
+<header class="page-header"><h1 class="page-title">{{t "not_found"}}</h1></header>
+{{- end}}
+{{end}}

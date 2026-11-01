@@ -24,7 +24,7 @@ func main() {
   cmd := &cli.Command{
     Name:     "afsc",
     Usage:    "afsc server and tooling",
-    Commands: []*cli.Command{serveCmd(), migrateCmd(), importCmd()},
+    Commands: []*cli.Command{serveCmd(), migrateCmd(), importCmd(), themeCmd()},
   }
 
   if err := cmd.Run(ctx, os.Args); err != nil {

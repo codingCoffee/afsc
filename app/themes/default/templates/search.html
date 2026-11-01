@@ -1,0 +1,11 @@
+{{define "title"}}{{t "search_results"}}{{with .Search.Query}}: {{.}}{{end}} | {{.Site.Title}}{{end}}
+
+{{define "content"}}
+<header class="page-header">
+  <h1 class="page-title">{{if .Search.Query}}{{t "search_results"}}: “{{.Search.Query}}”{{else}}{{t "search"}}{{end}}</h1>
+  {{template "parts/search-form.html" .}}
+</header>
+{{- if .Search.Query}}
+{{template "parts/loop.html" .}}
+{{- end}}
+{{end}}

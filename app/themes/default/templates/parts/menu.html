@@ -1,0 +1,6 @@
+{{define "menu-items"}}
+  {{- range .}}
+  <li class="{{.Class}}"><a href="{{.URL}}"{{if .NewTab}} target="_blank" rel="noopener"{{end}}{{if .Current}} aria-current="page"{{end}}>{{.Label}}</a>
+    {{- with .Children}}<ul class="sub-menu">{{template "menu-items" .}}</ul>{{end}}</li>
+  {{- end}}
+{{end}}

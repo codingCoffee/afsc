@@ -1,0 +1,14 @@
+{{if .Posts}}
+<div class="posts">
+  {{- range .Posts}}{{template "parts/card.html" .}}{{end}}
+</div>
+{{- with pagination .}}
+<nav class="navigation pagination" aria-label="{{t "posts_navigation"}}">
+  <div class="nav-links">{{.}}</div>
+</nav>
+{{- end}}
+{{else if eq .Kind "search"}}
+<p class="no-results">{{t "no_results"}}</p>
+{{else}}
+<p class="no-results">{{t "no_posts"}}</p>
+{{end}}

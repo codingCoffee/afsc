@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="{{.Site.Language}}">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{block "title" .}}{{.Site.Title}}{{with .Site.Tagline}} – {{.}}{{end}}{{end}}</title>
+{{- if .Request.NoIndex}}
+<meta name="robots" content="noindex">
+{{- end}}
+<link rel="stylesheet" href="{{asset "style.css"}}">
+<link rel="alternate" type="application/rss+xml" title="{{.Site.Title}}" href="{{url "/feed/"}}">
+{{- if and .FeedURL (ne .FeedURL (url "/feed/"))}}
+<link rel="alternate" type="application/rss+xml" title="{{.Site.Title}} – {{t "feed"}}" href="{{.FeedURL}}">
+{{- end}}
+</head>
+<body class="{{body_class .}}">
+<a class="skip-link screen-reader-text" href="#content">{{t "skip"}}</a>
+<header class="site-header">
+  <div class="wrap header-inner">
+    <div class="branding">
+      <p class="site-title"><a href="{{url "/"}}" rel="home">{{.Site.Title}}</a></p>
+      {{- with .Site.Tagline}}
+      <p class="site-description">{{.}}</p>
+      {{- end}}
+    </div>
+    {{- with menu . "primary"}}
+    <nav class="main-navigation" aria-label="{{t "primary_menu"}}">
+      <ul class="menu">{{template "menu-items" .}}</ul>
+    </nav>
+    {{- end}}
+  </div>
+</header>
+<main id="content" class="site-main wrap">
+{{block "content" .}}{{end}}
+</main>
+<footer class="site-footer">
+  <div class="wrap footer-inner">
+    {{- with menu . "footer"}}
+    <nav class="footer-navigation" aria-label="{{t "footer_menu"}}">
+      <ul class="menu">{{template "menu-items" .}}</ul>
+    </nav>
+    {{- end}}
+    {{template "parts/search-form.html" .}}
+    <p class="site-info"><a href="{{url "/"}}">{{.Site.Title}}</a> · <a href="{{url "/feed/"}}">{{t "feed"}}</a></p>
+  </div>
+</footer>
+</body>
+</html>

@@ -1,0 +1,26 @@
+{{define "title"}}{{.Post.Title}} | {{.Site.Title}}{{end}}
+
+{{define "content"}}
+{{template "parts/breadcrumbs.html" .}}
+<article class="{{post_class .Post}}">
+  <header class="entry-header">
+    <h1 class="entry-title">{{.Post.Title}}</h1>
+    {{template "parts/meta.html" .Post}}
+  </header>
+  {{- with .Post.FeaturedMedia}}
+  <figure class="post-thumbnail"><img src="{{.URL}}" alt="{{.Alt}}"{{if .Width}} width="{{.Width}}" height="{{.Height}}"{{end}}></figure>
+  {{- end}}
+  <div class="entry-content">{{.Post.ContentHTML}}</div>
+  <footer class="entry-footer">
+    {{- with .Post.Tags}}
+    <p class="tags-links">{{t "tags"}}: {{range $i, $t := .}}{{if $i}}, {{end}}<a href="{{url $t}}" rel="tag">{{$t.Name}}</a>{{end}}</p>
+    {{- end}}
+    {{- range .Post.Authors}}
+    <section class="author-box">
+      <h2 class="author-title">{{t "written_by"}} <a href="{{url .}}" rel="author">{{.Name}}</a></h2>
+      {{- with .Bio}}<p>{{.}}</p>{{end}}
+    </section>
+    {{- end}}
+  </footer>
+</article>
+{{end}}

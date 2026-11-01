@@ -13,7 +13,9 @@ import (
   "github.com/jackc/pgx/v5/pgxpool"
   "github.com/urfave/cli/v3"
 
+  "afsc/internal/content"
   "afsc/internal/importer"
+  "afsc/internal/settings"
   "afsc/internal/storage"
   "afsc/internal/theme"
 )
@@ -46,9 +48,16 @@ func runImport(ctx context.Context, cmd *cli.Command) error {
   defer pool.Close()
 
   var tm *theme.Manifest
+  var parts content.Partials
   if dir := cmd.String("theme"); dir != "" {
-    if tm, err = theme.LoadManifest(dir); err != nil {
+    defaults := settings.Defaults()
+    th, err := theme.Load(dir, theme.Options{Backend: &theme.StaticBackend{S: &defaults}})
+    if err != nil {
       return err
+    }
+    tm = th.Manifest()
+    if th.HasPartials() {
+      parts = th
     }
   }
 
@@ -75,6 +84,7 @@ func runImport(ctx context.Context, cmd *cli.Command) error {
     Prune:     cmd.Bool("prune"),
     Confirm:   func(plan []importer.PruneItem) bool { return cmd.Bool("yes") || confirmPrune(plan) },
     Theme:     tm,
+    Partials:  parts,
     Pool:      pool,
     Storage:   store,
     Logf:      log.Printf,

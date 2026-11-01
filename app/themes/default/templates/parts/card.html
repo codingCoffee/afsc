@@ -1,0 +1,9 @@
+<article class="{{post_class .}}">
+  <header class="entry-header">
+    <h2 class="entry-title"><a href="{{url .}}" rel="bookmark">{{.Title}}</a></h2>
+    {{template "parts/meta.html" .}}
+  </header>
+  <div class="entry-summary">
+    {{- with .Snippet}}<p>{{.}}</p>{{else}}<p>{{excerpt .}}</p>{{end}}
+  </div>
+</article>

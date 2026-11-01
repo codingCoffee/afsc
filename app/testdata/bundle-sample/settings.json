@@ -13,7 +13,8 @@
     "author_base": "author",
     "trailing_slash": "always",
     "date_archives_enabled": true,
-    "author_archives_enabled": true
+    "author_archives_enabled": true,
+    "wpcompat_enabled": true
   },
   "reading": {
     "home": null,

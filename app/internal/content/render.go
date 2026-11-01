@@ -3,6 +3,7 @@ package content
 import (
   "fmt"
   "html"
+  "html/template"
   "net/url"
   "reflect"
   "slices"
@@ -23,8 +24,27 @@ type MediaInfo struct {
 }
 
 type RenderContext struct {
-  PostID int64
-  Media  func(id int64) (MediaInfo, bool)
+  PostID   int64
+  Media    func(id int64) (MediaInfo, bool)
+  Partials Partials // theme node overrides, unused in Feed mode
+  BaseURL  string   // when set, root-relative src, href and poster values become absolute
+  Feed     bool     // feed-safe output: built-in markup only, no lazy loading
+}
+
+// Partials renders a theme's nodes/<type>.html overrides.
+type Partials interface {
+  Has(node string) bool
+  Render(node string, d NodeData) (string, error)
+}
+
+// NodeData is what a node partial receives. Default is the built-in markup, so a partial can wrap it.
+type NodeData struct {
+  Type     string
+  Attrs    map[string]any
+  Media    *MediaInfo
+  Src      string
+  Children template.HTML
+  Default  template.HTML
 }
 
 // MediaURL is the public URL of a media variant (§9).
@@ -42,18 +62,34 @@ func (m MediaInfo) WPID() int64 {
 
 // Render is the only code that turns content into HTML. It returns the HTML and the plain text.
 func Render(doc *Node, ctx RenderContext) (string, string, error) {
-  r := &renderer{ctx: ctx}
+  h, t, _, err := renderDoc(doc, ctx, false)
+  return h, t, err
+}
+
+// RenderTeaser renders the content before the first readMore. more reports whether there was one.
+func RenderTeaser(doc *Node, ctx RenderContext) (html, text string, more bool, err error) {
+  return renderDoc(doc, ctx, true)
+}
+
+func renderDoc(doc *Node, ctx RenderContext, teaser bool) (string, string, bool, error) {
+  r := &renderer{ctx: ctx, teaser: teaser}
   if err := r.block(doc); err != nil {
-    return "", "", err
+    return "", "", false, err
   }
-  return r.b.String(), strings.TrimSpace(r.t.String()), nil
+  return r.b.String(), strings.TrimSpace(r.t.String()), r.stopped, nil
 }
 
 type renderer struct {
-  ctx    RenderContext
-  b      strings.Builder
-  t      strings.Builder
-  images int
+  ctx     RenderContext
+  b       strings.Builder
+  t       strings.Builder
+  images  int
+  teaser  bool
+  stopped bool
+}
+
+func (r *renderer) sub() *renderer {
+  return &renderer{ctx: r.ctx, images: r.images, teaser: r.teaser}
 }
 
 func (r *renderer) w(s string) { r.b.WriteString(s) }
@@ -76,7 +112,12 @@ func (r *renderer) open(tag string, kv ...string) {
     if kv[i+1] == "" && kv[i] != "alt" {
       continue
     }
-    r.w(" " + kv[i] + `="` + html.EscapeString(kv[i+1]) + `"`)
+    v := kv[i+1]
+    if r.ctx.BaseURL != "" && (kv[i] == "src" || kv[i] == "href" || kv[i] == "poster") &&
+      strings.HasPrefix(v, "/") && !strings.HasPrefix(v, "//") {
+      v = r.ctx.BaseURL + v
+    }
+    r.w(" " + kv[i] + `="` + html.EscapeString(v) + `"`)
   }
   r.w(">")
 }
@@ -103,6 +144,9 @@ func itoa(i int64) string {
 
 func (r *renderer) children(n *Node) error {
   for _, c := range n.Content {
+    if r.stopped {
+      break
+    }
     if err := r.block(c); err != nil {
       return err
     }
@@ -130,6 +174,48 @@ func (r *renderer) textblock(n *Node, tag string, kv ...string) error {
 }
 
 func (r *renderer) block(n *Node) error {
+  if n.Type != "doc" && !r.ctx.Feed && r.ctx.Partials != nil && r.ctx.Partials.Has(n.Type) {
+    return r.partial(n)
+  }
+  return r.builtin(n)
+}
+
+func isInline(t string) bool { return Nodes[t].Group == "inline" }
+
+// partial runs the theme override for n. Plain text always comes from the built-in renderer.
+func (r *renderer) partial(n *Node) error {
+  def := r.sub()
+  if err := def.builtin(n); err != nil {
+    return err
+  }
+  kids := r.sub()
+  var err error
+  if len(n.Content) > 0 && isInline(n.Content[0].Type) {
+    err = kids.inline(n.Content)
+  } else {
+    err = kids.children(n)
+  }
+  if err != nil {
+    return err
+  }
+  d := NodeData{Type: n.Type, Attrs: n.Attrs, Src: n.str("src"),
+    Children: template.HTML(kids.b.String()), Default: template.HTML(def.b.String())}
+  if m, ok, err := r.media(n, "mediaId"); err != nil {
+    return err
+  } else if ok {
+    d.Media, d.Src = &m, MediaURL(m, "orig")
+  }
+  out, err := r.ctx.Partials.Render(n.Type, d)
+  if err != nil {
+    return fmt.Errorf("partial nodes/%s.html: %w", n.Type, err)
+  }
+  r.w(out)
+  r.t.WriteString(def.t.String())
+  r.images, r.stopped = def.images, def.stopped
+  return nil
+}
+
+func (r *renderer) builtin(n *Node) error {
   switch n.Type {
   case "doc":
     return r.children(n)
@@ -201,11 +287,17 @@ func (r *renderer) block(n *Node) error {
     return r.wrap(n, "details")
   case "detailsSummary":
     return r.textblock(n, "summary")
+  case "figcaption":
+    return r.textblock(n, "figcaption")
   case "detailsContent":
     return r.wrap(n, "div", "class", "details-content")
   case "container":
     return r.wrap(n, "div", "class", n.str("classes"))
   case "readMore":
+    if r.teaser {
+      r.stopped = true
+      return nil
+    }
     id := "more"
     if r.ctx.PostID > 0 {
       id = "more-" + strconv.FormatInt(r.ctx.PostID, 10)
@@ -303,7 +395,7 @@ func (r *renderer) image(n *Node, o imageOpts) (imageResult, error) {
 
   r.images++
   loading, decoding := "", ""
-  if r.images > 1 {
+  if r.images > 1 && !r.ctx.Feed {
     loading, decoding = "lazy", "async"
   }
   if href != "" {
@@ -328,7 +420,7 @@ func (r *renderer) figure(n *Node) error {
   }
 
   // the figure's attributes depend on the image, so render the image with a scratch renderer first
-  sub := &renderer{ctx: r.ctx, images: r.images}
+  sub := r.sub()
   res, err := sub.image(img, imageOpts{inFigure: true})
   if err != nil {
     return err
@@ -408,9 +500,13 @@ func (r *renderer) embed(n *Node) {
 
   r.open("figure", "class", "wp-block-embed is-provider-"+provider+" wp-block-embed-"+provider)
   r.w(`<div class="wp-block-embed__wrapper">`)
+  loading := "lazy"
+  if r.ctx.Feed {
+    loading = ""
+  }
   iframe := func(src, allow string) {
     r.open("iframe", "src", src, "title", title, "width", itoa(width), "height", itoa(height),
-      "loading", "lazy", "allow", allow, "allowfullscreen", "true", "sandbox", sanitize.IframeSandbox)
+      "loading", loading, "allow", allow, "allowfullscreen", "true", "sandbox", sanitize.IframeSandbox)
     r.close("iframe")
   }
   id := n.str("externalId")

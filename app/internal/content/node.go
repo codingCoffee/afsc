@@ -90,3 +90,16 @@ func toInt(v any) (int64, bool) {
   }
   return 0, false
 }
+
+// MediaIDs lists the media ids a stored document references, so callers can load them in one query.
+func MediaIDs(doc *Node) []int64 {
+  var ids []int64
+  Walk(doc, func(n *Node) {
+    for _, k := range []string{"mediaId", "posterMediaId"} {
+      if id, ok := n.int(k); ok {
+        ids = append(ids, id)
+      }
+    }
+  })
+  return ids
+}

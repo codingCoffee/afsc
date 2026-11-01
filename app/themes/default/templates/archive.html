@@ -1,0 +1,22 @@
+{{define "archive-title"}}
+  {{- if .Term}}{{.Term.Name}}
+  {{- else if .Author}}{{.Author.Name}}
+  {{- else if .Date}}{{if .Date.Month}}{{date .Date.Start "January 2006"}}{{else}}{{.Date.Year}}{{end}}
+  {{- end}}
+{{- end}}
+
+{{define "title"}}{{template "archive-title" .}} | {{.Site.Title}}{{end}}
+
+{{define "content"}}
+{{template "parts/breadcrumbs.html" .}}
+<header class="page-header">
+  <h1 class="page-title">{{template "archive-title" .}}</h1>
+  {{- with .Term}}{{with .Description}}
+  <div class="archive-description"><p>{{.}}</p></div>
+  {{- end}}{{end}}
+  {{- with .Author}}{{with .Bio}}
+  <div class="archive-description"><p>{{.}}</p></div>
+  {{- end}}{{end}}
+</header>
+{{template "parts/loop.html" .}}
+{{end}}

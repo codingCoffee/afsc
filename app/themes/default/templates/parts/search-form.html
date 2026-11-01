@@ -1,0 +1,7 @@
+<form class="search-form" role="search" method="get" action="{{url "/search/"}}">
+  <label>
+    <span class="screen-reader-text">{{t "search"}}</span>
+    <input type="search" name="q" value="{{with .Search}}{{.Query}}{{end}}" placeholder="{{t "search_placeholder"}}">
+  </label>
+  <button type="submit">{{t "search"}}</button>
+</form>

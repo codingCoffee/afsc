@@ -234,7 +234,7 @@ Reference fields take legacy keys.
 | Key | Fields (default) |
 |---|---|
 | `site` | `title` (""), `tagline` (""), `timezone` ("UTC", IANA name), `date_format` ("January 2, 2006", Go layout), `language` ("en") |
-| `permalinks` | `post_pattern` ("/{slug}/"; tokens `{slug} {year} {month} {day} {id} {category}`, must contain `{slug}` or `{id}`), `category_base` ("category"), `tag_base` ("tag"), `author_base` ("author"), `trailing_slash` ("always" \| "never"), `date_archives_enabled` (true), `author_archives_enabled` (true) |
+| `permalinks` | `post_pattern` ("/{slug}/"; tokens `{slug} {year} {month} {day} {id} {category}`, must contain `{slug}` or `{id}`), `category_base` ("category"), `tag_base` ("tag"), `author_base` ("author"), `trailing_slash` ("always" \| "never"), `date_archives_enabled` (true), `author_archives_enabled` (true), `wpcompat_enabled` (true; the `/?p=` style WordPress URL layer) |
 | `reading` | `home` (null = latest posts, or a page key), `posts_page` (page key or null), `posts_per_page` (10, 1–100), `feed_items` (10, 1–100), `feed_excerpt_only` (false) |
 | `seo` | `separator` ("-"), `title_templates` and `description_templates` (type → template; types `post page category tag author home search 404 date`; given entries override the defaults), `knowledge_graph` (`{type: "organization" \| "person", name, logo_media}`), `social_profiles` (https URLs), `twitter_site`, `default_image_media` (media key), `tag_noindex` (false), `auto_description` (false) |
 | `discussion` | `comments_enabled` (true), `close_after_days` (0 = never), `thread_depth` (3, 1–10) |

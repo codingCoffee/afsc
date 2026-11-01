@@ -56,6 +56,7 @@ type Permalinks struct {
   TrailingSlash         string `json:"trailing_slash"`
   DateArchivesEnabled   bool   `json:"date_archives_enabled"`
   AuthorArchivesEnabled bool   `json:"author_archives_enabled"`
+  WPCompatEnabled       bool   `json:"wpcompat_enabled"`
 }
 
 type Reading struct {
@@ -109,7 +110,7 @@ func Defaults() All {
     Site: Site{Timezone: "UTC", DateFormat: "January 2, 2006", Language: "en"},
     Permalinks: Permalinks{
       PostPattern: "/{slug}/", CategoryBase: "category", TagBase: "tag", AuthorBase: "author",
-      TrailingSlash: "always", DateArchivesEnabled: true, AuthorArchivesEnabled: true,
+      TrailingSlash: "always", DateArchivesEnabled: true, AuthorArchivesEnabled: true, WPCompatEnabled: true,
     },
     Reading: Reading{PostsPerPage: 10, FeedItems: 10},
     SEO: SEO{

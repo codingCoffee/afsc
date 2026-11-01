@@ -20,6 +20,8 @@ import (
   "github.com/labstack/echo/v5"
   "github.com/labstack/echo/v5/middleware"
   "github.com/urfave/cli/v3"
+
+  "afsc/internal/site"
 )
 
 const nuxtURL = "http://localhost:3000"
@@ -27,7 +29,7 @@ const nuxtURL = "http://localhost:3000"
 func serveCmd() *cli.Command {
   return &cli.Command{
     Name:  "serve",
-    Usage: "run the API server and proxy everything else to Nuxt",
+    Usage: "run the public site, the admin and its API",
     Flags: []cli.Flag{
       &cli.StringFlag{Name: "api-host", Value: "0.0.0.0", Sources: cli.EnvVars("AFSC_API_HOST")},
       &cli.IntFlag{Name: "api-port", Value: 1381, Sources: cli.EnvVars("AFSC_API_PORT")},
@@ -65,6 +67,30 @@ func serve(ctx context.Context, cmd *cli.Command) error {
   }
   defer pool.Close()
 
+  baseURL, err := publicBaseURL()
+  if err != nil {
+    return err
+  }
+  themeDir := os.Getenv("AFSC_THEME_DIR")
+  if themeDir == "" {
+    return errors.New("AFSC_THEME_DIR is not set")
+  }
+  dev := os.Getenv("AFSC_ENV") == "dev"
+  pub, err := site.New(ctx, site.Config{Pool: pool, BaseURL: baseURL, ThemeDir: themeDir, Dev: dev, Logf: log.Printf})
+  if err != nil {
+    return err
+  }
+  siteCtx, stopSite := context.WithCancel(ctx)
+  siteDone := make(chan struct{})
+  go func() {
+    pub.Run(siteCtx)
+    close(siteDone)
+  }()
+  defer func() {
+    stopSite()
+    <-siteDone
+  }()
+
   fsys, err := clientFS()
   if err != nil {
     return err
@@ -80,7 +106,7 @@ func serve(ctx context.Context, cmd *cli.Command) error {
     e.GET("/admin", h)
     e.GET("/admin/*", h)
   } else {
-    if os.Getenv("AFSC_ENV") == "dev" {
+    if dev {
       nuxt, err := startNuxtDev()
       if err != nil {
         return err
@@ -96,14 +122,17 @@ func serve(ctx context.Context, cmd *cli.Command) error {
       Balancer: middleware.NewRandomBalancer([]*middleware.ProxyTarget{{URL: target}}),
       Skipper: func(c *echo.Context) bool {
         p := c.Request().URL.Path
-        return p == "/" || strings.HasPrefix(p, "/admin/api/")
+        isAdmin := p == "/admin" || strings.HasPrefix(p, "/admin/")
+        return !isAdmin || strings.HasPrefix(p, "/admin/api/")
       },
     }))
   }
 
-  e.GET("/", func(c *echo.Context) error {
-    return c.JSON(http.StatusOK, map[string]string{"message": "Hello, World!"})
-  })
+  public := echo.WrapHandler(pub)
+  for _, path := range []string{"/", "/*"} {
+    e.GET(path, public)
+    e.HEAD(path, public)
+  }
 
   api := e.Group("/admin/api/v1")
   api.GET("/ht", healthHandler(pool))
@@ -111,7 +140,7 @@ func serve(ctx context.Context, cmd *cli.Command) error {
     secret:          []byte(secret),
     accessTTL:       time.Duration(accessMins) * time.Minute,
     refreshTTL:      time.Duration(refreshDays) * 24 * time.Hour,
-    strictPasswords: os.Getenv("AFSC_ENV") != "dev",
+    strictPasswords: !dev,
   }).register(api)
 
   addr := net.JoinHostPort(cmd.String("api-host"), strconv.Itoa(cmd.Int("api-port")))
@@ -120,6 +149,17 @@ func serve(ctx context.Context, cmd *cli.Command) error {
     return err
   }
   return nil
+}
+
+// publicBaseURL reads AFSC_PUBLIC_BASE_URL, the origin used for absolute URLs. The Host header is never trusted.
+func publicBaseURL() (string, error) {
+  raw := os.Getenv("AFSC_PUBLIC_BASE_URL")
+  u, err := url.Parse(raw)
+  if raw == "" || err != nil || (u.Scheme != "https" && u.Scheme != "http") || u.Host == "" ||
+    (u.Path != "" && u.Path != "/") || u.RawQuery != "" || u.Fragment != "" {
+    return "", errors.New("AFSC_PUBLIC_BASE_URL must be an http(s) origin such as https://blog.example.com")
+  }
+  return u.Scheme + "://" + u.Host, nil
 }
 
 // spaHandler serves the generated Nuxt site under /admin, falling back to index.html for client-side routes.

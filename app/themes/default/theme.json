@@ -1,8 +1,37 @@
 {
   "name": "default",
-  "version": "0.1.0",
+  "version": "0.2.0",
+  "image_sizes": {
+    "thumbnail": {"width": 150, "height": 150, "crop": true},
+    "medium": {"width": 300, "height": 300, "crop": false},
+    "large": {"width": 1024, "height": 1024, "crop": false}
+  },
+  "srcset_widths": [320, 640, 960, 1280, 1920],
   "menu_locations": ["primary", "footer"],
   "content": {
     "allowed_classes": ["lead", "callout", "note", "warning", "has-small-font-size", "has-large-font-size"]
+  },
+  "assets": [{"path": "style.css"}],
+  "csp": {},
+  "settings": {
+    "show_reading_time": {"type": "bool", "label": "Show reading time on posts", "default": true}
+  },
+  "strings": {
+    "skip": "Skip to content",
+    "breadcrumbs": "Breadcrumbs",
+    "primary_menu": "Primary",
+    "footer_menu": "Footer",
+    "search": "Search",
+    "search_placeholder": "Search…",
+    "search_results": "Search results",
+    "no_posts": "Nothing here yet.",
+    "no_results": "No results. Try different words.",
+    "not_found": "Page not found",
+    "not_found_text": "The page you were looking for isn't here. Try searching instead.",
+    "min_read": "min read",
+    "tags": "Tags",
+    "written_by": "Written by",
+    "posts_navigation": "Posts navigation",
+    "feed": "Feed"
   }
 }

@@ -7,6 +7,7 @@ import (
 
   "github.com/jackc/pgx/v5/pgxpool"
 
+  "afsc/internal/content"
   "afsc/internal/storage"
   "afsc/internal/theme"
 )
@@ -21,6 +22,8 @@ type Options struct {
   // Confirm is asked before prune deletes anything; it is never called in a dry run.
   Confirm func([]PruneItem) bool
   Theme   *theme.Manifest
+  // Partials are the theme's content node overrides, applied when rendering content_html.
+  Partials content.Partials
   Pool    *pgxpool.Pool
   Storage storage.Storage
   Logf    func(format string, args ...any)
@@ -77,7 +80,7 @@ func Run(ctx context.Context, o Options) (*Report, error) {
   }
   defer conn.Exec(context.WithoutCancel(ctx), `SELECT pg_advisory_unlock(hashtext('afsc_import'))`)
 
-  w := &writer{conn: conn, dir: o.BundleDir, ix: ix, rep: rep, store: o.Storage, logf: o.Logf, like: m.Source + ":%"}
+  w := &writer{conn: conn, dir: o.BundleDir, ix: ix, rep: rep, store: o.Storage, logf: o.Logf, like: m.Source + ":%", parts: o.Partials}
   if o.DryRun {
     tx, err := conn.Begin(ctx)
     if err != nil {
