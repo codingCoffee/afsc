@@ -13,6 +13,7 @@ import (
 	"strings"
 
 	"afsc/internal/content"
+	"afsc/internal/settings"
 )
 
 type Manifest struct {
@@ -40,19 +41,62 @@ type Asset struct {
 	Async bool   `json:"async"`
 }
 
+// CSP lists extra https origins per directive for the public Content-Security-Policy.
 type CSP struct {
 	Script  []string `json:"script"`
 	Style   []string `json:"style"`
 	Frame   []string `json:"frame"`
 	Img     []string `json:"img"`
+	Font    []string `json:"font"`
 	Connect []string `json:"connect"`
 }
 
-// Setting is a theme option. Admins will edit it in M3; until then the default applies.
+// Directives maps each CSP directive to the theme's origins for it.
+func (c CSP) Directives() map[string][]string {
+	return map[string][]string{"script-src": c.Script, "style-src": c.Style, "frame-src": c.Frame, "img-src": c.Img,
+		"font-src": c.Font, "connect-src": c.Connect}
+}
+
+// Setting is a theme option. Admins edit it under Settings → Theme; until then the default applies.
 type Setting struct {
-	Type    string `json:"type"`
-	Label   string `json:"label"`
-	Default any    `json:"default"`
+	Type    string   `json:"type"`
+	Label   string   `json:"label"`
+	Default any      `json:"default"`
+	Options []string `json:"options,omitempty"`
+}
+
+// SettingTypes are the allowed theme setting types.
+var SettingTypes = []string{"bool", "string", "number", "select", "color"}
+
+var colorRe = regexp.MustCompile(`^#[0-9a-fA-F]{6}$`)
+
+// Check reports whether v (as decoded from JSON) is a valid value for s.
+func (s Setting) Check(v any) error {
+	switch s.Type {
+	case "bool":
+		if _, ok := v.(bool); !ok {
+			return fmt.Errorf("must be true or false")
+		}
+	case "number":
+		if _, ok := v.(float64); !ok {
+			return fmt.Errorf("must be a number")
+		}
+	case "string":
+		if x, ok := v.(string); !ok || len(x) > 4096 {
+			return fmt.Errorf("must be text of at most 4096 bytes")
+		}
+	case "color":
+		if x, ok := v.(string); !ok || !colorRe.MatchString(x) {
+			return fmt.Errorf("must be a #rrggbb color")
+		}
+	case "select":
+		if x, ok := v.(string); !ok || !slices.Contains(s.Options, x) {
+			return fmt.Errorf("must be one of %s", strings.Join(s.Options, ", "))
+		}
+	default:
+		return fmt.Errorf("unknown setting type %q", s.Type)
+	}
+	return nil
 }
 
 // PostsPerPageKinds are the archive types theme.json may override posts_per_page for.
@@ -112,9 +156,26 @@ func (m *Manifest) validate() error {
 			bad("assets: %q must be a relative path under assets/", a.Path)
 		}
 	}
-	for k := range m.Settings {
+	for k, s := range m.Settings {
 		if !keyRe.MatchString(k) {
 			bad("settings: %q is not a valid key", k)
+		}
+		switch {
+		case !slices.Contains(SettingTypes, s.Type):
+			bad("settings.%s: type must be one of %s", k, strings.Join(SettingTypes, " "))
+		case s.Type == "select" && len(s.Options) == 0:
+			bad("settings.%s: a select needs options", k)
+		default:
+			if err := s.Check(s.Default); err != nil {
+				bad("settings.%s: default %v", k, err)
+			}
+		}
+	}
+	for dir, hosts := range m.CSP.Directives() {
+		for _, h := range hosts {
+			if !settings.ValidCSPHost(h) {
+				bad("csp: %q (%s) must be an https origin, optionally with a leading *.", h, dir)
+			}
 		}
 	}
 	for k := range m.Strings {

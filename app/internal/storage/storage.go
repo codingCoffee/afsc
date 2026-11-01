@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
+	v4 "github.com/aws/aws-sdk-go-v2/aws/signer/v4"
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/aws/aws-sdk-go-v2/service/s3/types"
@@ -22,6 +23,14 @@ import (
 
 type Storage interface {
 	Put(ctx context.Context, key string, body io.ReadSeeker, size int64, contentType string) error
+}
+
+// Manager is what the admin media API needs on top of Put: streaming an unseekable body of known size (an upload
+// request) and deleting objects.
+type Manager interface {
+	Storage
+	PutStream(ctx context.Context, key string, body io.Reader, size int64, contentType string) error
+	Delete(ctx context.Context, key string) error
 }
 
 // Reader streams stored originals. rng is a single "bytes=a-b" range, or "" for the whole object.
@@ -159,6 +168,30 @@ func (s *S3) Put(ctx context.Context, key string, body io.ReadSeeker, size int64
 	})
 	if err != nil {
 		return fmt.Errorf("put %s: %w", key, err)
+	}
+	return nil
+}
+
+// PutStream uploads body without buffering it. The payload isn't hashed for the signature (UNSIGNED-PAYLOAD), so
+// the body is read once; TLS protects it in transit.
+func (s *S3) PutStream(ctx context.Context, key string, body io.Reader, size int64, contentType string) error {
+	_, err := s.client.PutObject(ctx, &s3.PutObjectInput{
+		Bucket:        aws.String(s.bucket),
+		Key:           aws.String(key),
+		Body:          body,
+		ContentLength: aws.Int64(size),
+		ContentType:   aws.String(contentType),
+	}, s3.WithAPIOptions(v4.SwapComputePayloadSHA256ForUnsignedPayloadMiddleware))
+	if err != nil {
+		return fmt.Errorf("put %s: %w", key, err)
+	}
+	return nil
+}
+
+// Delete removes an object. Deleting a missing key is not an error.
+func (s *S3) Delete(ctx context.Context, key string) error {
+	if _, err := s.client.DeleteObject(ctx, &s3.DeleteObjectInput{Bucket: aws.String(s.bucket), Key: aws.String(key)}); err != nil {
+		return s3Err("delete", key, err)
 	}
 	return nil
 }

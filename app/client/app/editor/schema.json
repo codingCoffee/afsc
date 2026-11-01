@@ -1,0 +1,573 @@
+{
+  "nodes": {
+    "blockquote": {
+      "group": "block",
+      "content": [
+        {
+          "allow": [
+            "block"
+          ],
+          "min": 1,
+          "max": -1
+        }
+      ],
+      "attrs": {
+        "classes": {
+          "type": "classes"
+        }
+      }
+    },
+    "bulletList": {
+      "group": "block",
+      "content": [
+        {
+          "allow": [
+            "listItem"
+          ],
+          "min": 1,
+          "max": -1
+        }
+      ]
+    },
+    "codeBlock": {
+      "group": "block",
+      "content": [
+        {
+          "allow": [
+            "text"
+          ],
+          "min": 0,
+          "max": -1
+        }
+      ],
+      "attrs": {
+        "language": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_+#.-]{1,32}$"
+        }
+      }
+    },
+    "container": {
+      "group": "block",
+      "content": [
+        {
+          "allow": [
+            "block"
+          ],
+          "min": 1,
+          "max": -1
+        }
+      ],
+      "attrs": {
+        "classes": {
+          "type": "classes",
+          "required": true
+        }
+      }
+    },
+    "details": {
+      "group": "block",
+      "content": [
+        {
+          "allow": [
+            "detailsSummary"
+          ],
+          "min": 1,
+          "max": 1
+        },
+        {
+          "allow": [
+            "detailsContent"
+          ],
+          "min": 1,
+          "max": 1
+        }
+      ]
+    },
+    "detailsContent": {
+      "content": [
+        {
+          "allow": [
+            "block"
+          ],
+          "min": 1,
+          "max": -1
+        }
+      ]
+    },
+    "detailsSummary": {
+      "content": [
+        {
+          "allow": [
+            "inline"
+          ],
+          "min": 0,
+          "max": -1
+        }
+      ],
+      "marks": true
+    },
+    "doc": {
+      "content": [
+        {
+          "allow": [
+            "block"
+          ],
+          "min": 1,
+          "max": -1
+        }
+      ]
+    },
+    "embed": {
+      "group": "block",
+      "attrs": {
+        "caption": {
+          "type": "string"
+        },
+        "externalId": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_-]{1,64}$"
+        },
+        "height": {
+          "type": "integer",
+          "min": 1,
+          "max": 100000
+        },
+        "provider": {
+          "type": "enum",
+          "required": true,
+          "enum": [
+            "youtube",
+            "vimeo",
+            "x",
+            "instagram",
+            "spotify",
+            "soundcloud",
+            "googlemaps"
+          ]
+        },
+        "url": {
+          "type": "url",
+          "required": true
+        },
+        "width": {
+          "type": "integer",
+          "min": 1,
+          "max": 100000
+        }
+      }
+    },
+    "figcaption": {
+      "content": [
+        {
+          "allow": [
+            "inline"
+          ],
+          "min": 0,
+          "max": -1
+        }
+      ],
+      "marks": true
+    },
+    "figure": {
+      "group": "block",
+      "content": [
+        {
+          "allow": [
+            "image"
+          ],
+          "min": 1,
+          "max": 1
+        },
+        {
+          "allow": [
+            "figcaption"
+          ],
+          "min": 1,
+          "max": 1
+        }
+      ],
+      "attrs": {
+        "align": {
+          "type": "enum",
+          "enum": [
+            "none",
+            "left",
+            "center",
+            "right"
+          ]
+        },
+        "classes": {
+          "type": "classes"
+        }
+      }
+    },
+    "gallery": {
+      "group": "block",
+      "content": [
+        {
+          "allow": [
+            "image"
+          ],
+          "min": 1,
+          "max": -1
+        }
+      ],
+      "attrs": {
+        "classes": {
+          "type": "classes"
+        },
+        "columns": {
+          "type": "integer",
+          "required": true,
+          "min": 1,
+          "max": 9
+        },
+        "link": {
+          "type": "enum",
+          "enum": [
+            "media",
+            "none"
+          ]
+        },
+        "size": {
+          "type": "string",
+          "pattern": "^[a-z0-9_-]{1,40}$"
+        }
+      }
+    },
+    "hardBreak": {
+      "group": "inline"
+    },
+    "heading": {
+      "group": "block",
+      "content": [
+        {
+          "allow": [
+            "inline"
+          ],
+          "min": 0,
+          "max": -1
+        }
+      ],
+      "attrs": {
+        "classes": {
+          "type": "classes"
+        },
+        "id": {
+          "type": "string",
+          "pattern": "^[A-Za-z][A-Za-z0-9_:.-]{0,100}$"
+        },
+        "level": {
+          "type": "integer",
+          "required": true,
+          "min": 1,
+          "max": 6
+        },
+        "textAlign": {
+          "type": "enum",
+          "enum": [
+            "left",
+            "center",
+            "right",
+            "justify"
+          ]
+        }
+      },
+      "marks": true
+    },
+    "horizontalRule": {
+      "group": "block"
+    },
+    "image": {
+      "group": "block",
+      "attrs": {
+        "align": {
+          "type": "enum",
+          "enum": [
+            "none",
+            "left",
+            "center",
+            "right"
+          ]
+        },
+        "alt": {
+          "type": "string",
+          "required": true
+        },
+        "classes": {
+          "type": "classes"
+        },
+        "height": {
+          "type": "integer",
+          "min": 1,
+          "max": 100000
+        },
+        "href": {
+          "type": "url"
+        },
+        "linkTarget": {
+          "type": "enum",
+          "enum": [
+            "media",
+            "custom",
+            "none"
+          ]
+        },
+        "mediaId": {
+          "type": "mediaId"
+        },
+        "size": {
+          "type": "string",
+          "pattern": "^[a-z0-9_-]{1,40}$"
+        },
+        "src": {
+          "type": "url"
+        },
+        "title": {
+          "type": "string"
+        },
+        "width": {
+          "type": "integer",
+          "min": 1,
+          "max": 100000
+        }
+      }
+    },
+    "listItem": {
+      "content": [
+        {
+          "allow": [
+            "block"
+          ],
+          "min": 1,
+          "max": -1
+        }
+      ]
+    },
+    "orderedList": {
+      "group": "block",
+      "content": [
+        {
+          "allow": [
+            "listItem"
+          ],
+          "min": 1,
+          "max": -1
+        }
+      ],
+      "attrs": {
+        "start": {
+          "type": "integer",
+          "min": 0,
+          "max": 1000000
+        }
+      }
+    },
+    "paragraph": {
+      "group": "block",
+      "content": [
+        {
+          "allow": [
+            "inline"
+          ],
+          "min": 0,
+          "max": -1
+        }
+      ],
+      "attrs": {
+        "classes": {
+          "type": "classes"
+        },
+        "textAlign": {
+          "type": "enum",
+          "enum": [
+            "left",
+            "center",
+            "right",
+            "justify"
+          ]
+        }
+      },
+      "marks": true
+    },
+    "rawHtml": {
+      "group": "block",
+      "attrs": {
+        "html": {
+          "type": "string",
+          "required": true
+        }
+      }
+    },
+    "readMore": {
+      "group": "block"
+    },
+    "table": {
+      "group": "block",
+      "content": [
+        {
+          "allow": [
+            "tableRow"
+          ],
+          "min": 1,
+          "max": -1
+        }
+      ]
+    },
+    "tableCell": {
+      "content": [
+        {
+          "allow": [
+            "block"
+          ],
+          "min": 1,
+          "max": -1
+        }
+      ],
+      "attrs": {
+        "colspan": {
+          "type": "integer",
+          "min": 1,
+          "max": 1000
+        },
+        "colwidth": {
+          "type": "integer[]"
+        },
+        "rowspan": {
+          "type": "integer",
+          "min": 1,
+          "max": 1000
+        }
+      }
+    },
+    "tableHeader": {
+      "content": [
+        {
+          "allow": [
+            "block"
+          ],
+          "min": 1,
+          "max": -1
+        }
+      ],
+      "attrs": {
+        "colspan": {
+          "type": "integer",
+          "min": 1,
+          "max": 1000
+        },
+        "colwidth": {
+          "type": "integer[]"
+        },
+        "rowspan": {
+          "type": "integer",
+          "min": 1,
+          "max": 1000
+        }
+      }
+    },
+    "tableRow": {
+      "content": [
+        {
+          "allow": [
+            "tableCell",
+            "tableHeader"
+          ],
+          "min": 1,
+          "max": -1
+        }
+      ]
+    },
+    "text": {
+      "group": "inline"
+    },
+    "video": {
+      "group": "block",
+      "attrs": {
+        "autoplay": {
+          "type": "boolean"
+        },
+        "controls": {
+          "type": "boolean"
+        },
+        "loop": {
+          "type": "boolean"
+        },
+        "mediaId": {
+          "type": "mediaId"
+        },
+        "muted": {
+          "type": "boolean"
+        },
+        "posterMediaId": {
+          "type": "mediaId"
+        },
+        "src": {
+          "type": "url"
+        }
+      }
+    }
+  },
+  "marks": {
+    "bold": {},
+    "code": {},
+    "italic": {},
+    "link": {
+      "attrs": {
+        "href": {
+          "type": "url",
+          "required": true
+        },
+        "rel": {
+          "type": "string",
+          "pattern": "^[a-z ]{1,64}$"
+        },
+        "target": {
+          "type": "enum",
+          "enum": [
+            "_blank",
+            "_self"
+          ]
+        },
+        "title": {
+          "type": "string"
+        }
+      }
+    },
+    "strike": {},
+    "subscript": {},
+    "superscript": {},
+    "textStyle": {
+      "attrs": {
+        "backgroundColor": {
+          "type": "color"
+        },
+        "color": {
+          "type": "color"
+        }
+      }
+    },
+    "underline": {}
+  },
+  "mark_order": [
+    "link",
+    "bold",
+    "italic",
+    "underline",
+    "strike",
+    "code",
+    "subscript",
+    "superscript",
+    "textStyle"
+  ],
+  "embed_providers": [
+    "youtube",
+    "vimeo",
+    "x",
+    "instagram",
+    "spotify",
+    "soundcloud",
+    "googlemaps"
+  ]
+}

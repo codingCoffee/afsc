@@ -8,8 +8,11 @@ import (
 	"strconv"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/labstack/echo/v5"
 
+	"afsc/internal/audit"
+	"afsc/internal/authz"
 	"afsc/internal/redirects"
 	"afsc/internal/site"
 )
@@ -18,36 +21,32 @@ import (
 type redirectHandler struct {
 	store *redirects.Store
 	site  *site.Site
-}
-
-func requireRole(roles ...string) echo.MiddlewareFunc {
-	return func(next echo.HandlerFunc) echo.HandlerFunc {
-		return func(c *echo.Context) error {
-			role, _ := c.Get(ctxRole).(string)
-			for _, r := range roles {
-				if role == r {
-					return next(c)
-				}
-			}
-			return jsonError(c, http.StatusForbidden, "not allowed for your role")
-		}
-	}
+	pool  *pgxpool.Pool
 }
 
 func (h *authHandler) registerRedirects(g *echo.Group, rh *redirectHandler) {
-	mw := []echo.MiddlewareFunc{h.requireAuth, requireRole("admin", "editor")}
+	rh.pool = h.pool
+	cp := authz.ManageContent
+	h.route(g, http.MethodGet, "/redirects", cp, rh.list)
+	h.route(g, http.MethodPost, "/redirects", cp, rh.create)
+	h.route(g, http.MethodPost, "/redirects/test", cp, rh.test)
+	h.route(g, http.MethodGet, "/redirects/export", cp, rh.export)
+	h.route(g, http.MethodPost, "/redirects/import", cp, rh.importCSV)
+	h.route(g, http.MethodGet, "/redirects/:id", cp, rh.get)
+	h.route(g, http.MethodPut, "/redirects/:id", cp, rh.update)
+	h.route(g, http.MethodDelete, "/redirects/:id", cp, rh.remove)
 
-	g.GET("/redirects", rh.list, mw...)
-	g.POST("/redirects", rh.create, mw...)
-	g.POST("/redirects/test", rh.test, mw...)
-	g.GET("/redirects/export", rh.export, mw...)
-	g.POST("/redirects/import", rh.importCSV, mw...)
-	g.GET("/redirects/:id", rh.get, mw...)
-	g.PUT("/redirects/:id", rh.update, mw...)
-	g.DELETE("/redirects/:id", rh.remove, mw...)
+	h.route(g, http.MethodGet, "/not-found", cp, rh.listNotFound)
+	h.route(g, http.MethodPost, "/not-found/dismiss", cp, rh.dismiss)
+}
 
-	g.GET("/not-found", rh.listNotFound, mw...)
-	g.POST("/not-found/dismiss", rh.dismiss, mw...)
+// audit records a redirect change (§7.1); entityID is the redirect id, or "" for imports.
+func (rh *redirectHandler) audit(c *echo.Context, action, entityID string, diff any) error {
+	if rh.pool == nil {
+		return nil
+	}
+	return audit.Write(c.Request().Context(), rh.pool, audit.Entry{Actor: actor(c), Action: action, EntityType: "redirect",
+		EntityID: entityID, Diff: diff, IP: clientIP(c)})
 }
 
 type savedResponse struct {
@@ -158,6 +157,14 @@ func (rh *redirectHandler) save(c *echo.Context, id int64, status int) error {
 	if err != nil {
 		return err
 	}
+	action := "redirect.update"
+	if id == 0 {
+		action = "redirect.create"
+	}
+	if err := rh.audit(c, action, strconv.FormatInt(saved.ID, 10), map[string]any{"redirect": row,
+		"flattened_ids": saved.Flattened}); err != nil {
+		return err
+	}
 	if saved.Warnings == nil {
 		saved.Warnings = []string{}
 	}
@@ -169,11 +176,18 @@ func (rh *redirectHandler) remove(c *echo.Context) error {
 	if !ok {
 		return jsonError(c, http.StatusBadRequest, "invalid redirect id")
 	}
+	before, err := rh.store.Get(c.Request().Context(), id)
+	if err != nil {
+		return writeErr(c, err)
+	}
 	p, err := rh.store.Delete(c.Request().Context(), id)
 	if err != nil {
 		return writeErr(c, err)
 	}
 	if err := rh.invalidate(c, p); err != nil {
+		return err
+	}
+	if err := rh.audit(c, "redirect.delete", strconv.FormatInt(id, 10), map[string]any{"redirect": before}); err != nil {
 		return err
 	}
 	return c.NoContent(http.StatusNoContent)
@@ -225,6 +239,9 @@ func (rh *redirectHandler) importCSV(c *echo.Context) error {
 		return c.JSON(http.StatusUnprocessableEntity, rep)
 	}
 	if err := rh.invalidate(c, rep.Purge); err != nil {
+		return err
+	}
+	if err := rh.audit(c, "redirect.import", "", map[string]any{"lines": len(lines)}); err != nil {
 		return err
 	}
 	return c.JSON(http.StatusOK, rep)

@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 
-definePageMeta({ middleware: 'guest' })
+definePageMeta({ middleware: 'guest', layout: 'auth' })
 useHead({ title: 'Sign in · AFSC' })
 
 const { signin } = useAuth()
@@ -24,7 +24,7 @@ async function submit() {
   }
   catch (e) {
     error.value = statusOf(e) === 429
-      ? 'Too many attempts. Wait a minute and try again.'
+      ? 'Too many attempts. Wait a while and try again.'
       : errorData(e).message ?? 'Something went wrong. Try again.'
   }
   finally {
@@ -56,10 +56,7 @@ async function submit() {
     </form>
 
     <template #footer>
-      No account?
-      <NuxtLink to="/signup" class="text-foreground underline-offset-4 hover:text-primary hover:underline">
-        Sign up
-      </NuxtLink>
+      No account? Ask an admin for an invite link.
     </template>
   </AuthShell>
 </template>

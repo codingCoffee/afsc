@@ -845,7 +845,8 @@ func (w *writer) writePostRelations(ctx context.Context, tx pgx.Tx) error {
 		return err
 	}
 	w.finish("post_videos", n)
-	return nil
+	_, err = tx.Exec(ctx, sqlSyncPostMedia, postIDs)
+	return err
 }
 
 // ---- comments, menus, redirects, legacy, settings

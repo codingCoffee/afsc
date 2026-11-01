@@ -157,7 +157,9 @@ the page TTL, like pages. Purges are per sitemap type: every page of one type (`
 
 Set `seo.indexnow` to `{"enabled": true, "key": "…"}` (8 to 128 letters, digits or dashes). AFSC then serves the key
 at `/{key}.txt` so search engines can verify it. Generate a key with `openssl rand -hex 16`. To rotate it, change the
-setting; the old file stops being served at once. AFSC doesn't send pings yet; they arrive with publishing (M3).
+setting; the old file stops being served at once. While enabled, publishing, updating, unpublishing, trashing or
+moving a post or page queues an `indexnow.ping` job with its old and new URLs (never archives, never noindex posts),
+retried up to 8 times. Pings go only to `api.indexnow.org` over a client that refuses private addresses.
 
 ## Redirects and the 404 log
 
@@ -217,8 +219,10 @@ same JWT as the rest of the admin API); other roles get 403. The admin screens a
 
 `internal/redirects.SlugChange` creates a 301 (origin `slug_change`) from each old URL to its new one, points
 redirects that targeted the old URL at the new one, and deletes any exact redirect whose source is the new URL
-(it would hide the content). `site.PostURLs`, `TermURLs` and `AuthorURLs` compute the URL sets to compare. Nothing
-calls them yet: the post, term and author editors arrive in M3, and imports never trigger them.
+(it would hide the content). `site.PostURLs`, `TermURLs` and `AuthorURLs` compute the URL sets to compare. Saving a
+published post or page with a new slug, parent, date or primary category records its moves (subpages included);
+imports never do. Trashing a published post asks for a 410, a 301 to a chosen URL, or nothing; the rule is an
+exact `manual` redirect noted `trashed post #id`, and republishing the post at that URL deletes it.
 
 ### 404 log
 
@@ -226,10 +230,63 @@ calls them yet: the post, term and author editors arrive in M3, and imports neve
   except paths matching `seo.not_found.noise_patterns` (default `*.php`, `/.env*`, `/.git/*`, `/wp-admin/*`,
   `*.asp*`, `/cgi-bin/*`). Patterns are checked when a 404 happens, so rows logged before a pattern was added stay
   until dismissed or pruned.
-- **Retention.** Rows not seen for `seo.not_found.retention_days` (default 90) are deleted once at startup and
-  then daily. With several replicas, one prunes at a time (`pg_try_advisory_xact_lock`); the others skip.
+- **Retention.** Rows not seen for `seo.not_found.retention_days` (default 90) are deleted by the daily
+  `not_found.prune` job (see Jobs).
 - **Dismiss** deletes rows. A path that is hit again comes back with a fresh count, so add a noise pattern for
   recurring junk. Creating an exact redirect also removes the 404 row for its source.
+
+## Jobs
+
+`afsc serve` runs a job worker and the scheduler unless started with `--no-worker`; `afsc worker` runs only those.
+`AFSC_JOB_CONCURRENCY` (default 4) sets how many jobs a process runs at once. Jobs live in the `jobs` table and are
+claimed with `FOR UPDATE SKIP LOCKED`, so any number of processes can work. A failed job retries with backoff
+(10 s doubling to 1 h, ±25 % jitter) up to `max_attempts` (8); its `last_error` is kept. Exactly one process leads
+the scheduler, holding a Postgres advisory lock on its own connection; if it dies another takes over within 10 s.
+
+| Job | Every | Does |
+|---|---|---|
+| `posts.publish_scheduled` | 30 s | Publishes scheduled posts whose date has passed, purges their pages and pings IndexNow |
+| `not_found.prune` | day | Drops 404 log rows past retention |
+| `auth.prune` | day | Drops expired sessions, used or expired invites and old login failures and lockouts |
+| `jobs.prune` | day | Drops jobs finished more than 7 days ago |
+
+Run at least one process with jobs enabled, or scheduled posts never go live.
+
+## Previews
+
+The editor's preview link is `/?preview=<token>`: an HMAC (key derived from `AFSC_JWT_SECRET` with HKDF) over the
+post, the revision and an expiry one hour out. Preview responses bypass the page cache and send `no-store`,
+`X-Robots-Tag: noindex`, `Referrer-Policy: no-referrer` and a noindex robots meta. Rotating `AFSC_JWT_SECRET` voids
+open preview links.
+
+## Admin access and sessions
+
+- **Restrict `/admin` at the proxy.** The admin lives on the public domain. Allow `/admin` only from a VPN or office
+  range at the proxy or CDN. The app doesn't enforce IP restrictions itself. Any script on a public page runs on the
+  same origin as the admin; the defenses are the public CSP, the content sanitizer and admin-only code snippets.
+- **First run.** While the `users` table is empty, `afsc serve` logs a one-time setup token (or uses
+  `AFSC_SETUP_TOKEN`). Only the replica that created the token logs it. Open `/admin/`, enter the token and create
+  the first admin. After that, the setup endpoints return 404 and the token is deleted.
+- **Users are invite-only.** Admins invite users in Admin → Users, or run `afsc user create --email … --role …` or
+  `afsc user invite --email …` (for imported users). Each prints a link that is valid for 72 h and works once. AFSC
+  sends no email: send the link yourself over a trusted channel.
+- **Sessions.** A session ends after `AFSC_SESSION_IDLE_HOURS` (default 12) without use, and after
+  `AFSC_REFRESH_TOKEN_EXPIRY_DAYS` (default 7) in any case. Role changes, disabling an account and password changes
+  end that user's sessions. Access tokens last `AFSC_ACCESS_TOKEN_EXPIRY_MINS`, but every API request also checks
+  that the session is still active, so a revocation takes effect on the next request.
+- **Sign-in limits.** These are stored in Postgres, so they hold across replicas. After 5 failures in 15 min, an
+  account is locked for 15 min; each further lockout doubles, up to 4 h. One IP may fail 50 times in 15 min. Anyone
+  who knows a username can lock that account out, which is one more reason to keep `/admin` behind a VPN.
+- **Client IPs.** Set `AFSC_TRUSTED_PROXIES` to your load balancer's ranges. `X-Forwarded-For` is honoured only when
+  the direct peer is trusted; otherwise the peer address is used, so clients can't spoof it.
+- **CSRF.** The API accepts access tokens only in the `Authorization` header. Every non-GET request must carry
+  `Origin` equal to `AFSC_PUBLIC_BASE_URL` and a JSON body. The refresh cookie is `HttpOnly`, `Secure`,
+  `SameSite=Strict` and scoped to `/admin/api/v1/`.
+- **Admin headers.** `/admin` responses are `Cache-Control: no-store` and `X-Robots-Tag: noindex`, and can't be
+  framed. The SPA's CSP allows its own inline scripts by sha256 hash, computed from the embedded `index.html` at
+  startup, and Google Fonts for the admin typeface.
+- **Audit log.** Admin → Audit log lists sign-ins (including failures and lockouts), setup, user, role and session
+  changes, redirect changes, and, from later milestones, content and settings changes.
 
 ## General
 

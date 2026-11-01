@@ -22,7 +22,6 @@ import (
 	"github.com/urfave/cli/v3"
 
 	"afsc/internal/imgproxy"
-	"afsc/internal/redirects"
 	"afsc/internal/site"
 	"afsc/internal/storage"
 )
@@ -38,8 +37,11 @@ func serveCmd() *cli.Command {
 			&cli.IntFlag{Name: "api-port", Value: 1381, Sources: cli.EnvVars("AFSC_API_PORT")},
 			&cli.BoolFlag{Name: "migrate", Usage: "run all pending migrations before serving"},
 			&cli.IntFlag{Name: "access-token-expiry-mins", Value: 5, Sources: cli.EnvVars("AFSC_ACCESS_TOKEN_EXPIRY_MINS")},
-			&cli.IntFlag{Name: "refresh-token-expiry-days", Value: 7, Sources: cli.EnvVars("AFSC_REFRESH_TOKEN_EXPIRY_DAYS")},
+			&cli.IntFlag{Name: "refresh-token-expiry-days", Value: 7, Usage: "absolute session lifetime", Sources: cli.EnvVars("AFSC_REFRESH_TOKEN_EXPIRY_DAYS")},
+			&cli.IntFlag{Name: "session-idle-hours", Value: 12, Usage: "a session unused this long ends", Sources: cli.EnvVars("AFSC_SESSION_IDLE_HOURS")},
 			&cli.IntFlag{Name: "page-cache-mb", Value: 128, Usage: "in-process page cache size; 0 disables it", Sources: cli.EnvVars("AFSC_PAGE_CACHE_MB")},
+			&cli.BoolFlag{Name: "no-worker", Usage: "don't run jobs here (run `afsc worker` separately)"},
+			jobConcurrencyFlag,
 		},
 		Action: serve,
 	}
@@ -56,13 +58,26 @@ func serve(ctx context.Context, cmd *cli.Command) error {
 	if len(secret) < 32 {
 		return errors.New("AFSC_JWT_SECRET must be set and at least 32 bytes long")
 	}
-	accessMins, refreshDays := cmd.Int("access-token-expiry-mins"), cmd.Int("refresh-token-expiry-days")
-	if accessMins < 1 || refreshDays < 1 {
+	accessMins, refreshDays, idleHours := cmd.Int("access-token-expiry-mins"), cmd.Int("refresh-token-expiry-days"),
+		cmd.Int("session-idle-hours")
+	if accessMins < 1 || refreshDays < 1 || idleHours < 1 {
 		return errors.New("token expiries must be at least 1")
+	}
+	trusted, err := trustedProxies()
+	if err != nil {
+		return err
 	}
 	cacheMB := cmd.Int("page-cache-mb")
 	if cacheMB < 0 || cacheMB > 1<<20 {
 		return errors.New("AFSC_PAGE_CACHE_MB must be between 0 and 1048576")
+	}
+	jobConcurrency := cmd.Int("job-concurrency")
+	if jobConcurrency < 1 || jobConcurrency > 64 {
+		return errors.New("AFSC_JOB_CONCURRENCY must be between 1 and 64")
+	}
+	previewKey, err := site.PreviewKey([]byte(secret))
+	if err != nil {
+		return err
 	}
 
 	dbURL := os.Getenv("AFSC_DATABASE_URL")
@@ -100,7 +115,7 @@ func serve(ctx context.Context, cmd *cli.Command) error {
 		return err
 	}
 	pub, err := site.New(ctx, site.Config{Pool: pool, BaseURL: baseURL, ThemeDir: themeDir, Dev: dev, Logf: log.Printf,
-		Storage: store, Imgproxy: imgproxy.New(ipcfg), CacheBytes: int64(cacheMB) << 20})
+		Storage: store, Imgproxy: imgproxy.New(ipcfg), CacheBytes: int64(cacheMB) << 20, PreviewKey: previewKey})
 	if err != nil {
 		return err
 	}
@@ -114,6 +129,26 @@ func serve(ctx context.Context, cmd *cli.Command) error {
 		stopSite()
 		<-siteDone
 	}()
+	if !cmd.Bool("no-worker") {
+		jobsCtx, stopJobs := context.WithCancel(ctx)
+		jobsDone := make(chan struct{})
+		go func() {
+			newJobsRunner(pool, pub, baseURL, jobConcurrency).run(jobsCtx)
+			close(jobsDone)
+		}()
+		defer func() {
+			stopJobs()
+			<-jobsDone
+		}()
+	}
+
+	setupToken, err := ensureSetupToken(ctx, pool, os.Getenv("AFSC_SETUP_TOKEN"))
+	if err != nil {
+		return fmt.Errorf("setup token: %w", err)
+	}
+	if setupToken != "" {
+		log.Printf("no users yet: open %s/admin/ and use this one-time setup token: %s", baseURL, setupToken)
+	}
 
 	fsys, err := clientFS()
 	if err != nil {
@@ -126,9 +161,13 @@ func serve(ctx context.Context, cmd *cli.Command) error {
 	e.Use(middleware.Recover())
 
 	if fsys != nil {
+		csp, err := adminCSP(fsys)
+		if err != nil {
+			return fmt.Errorf("admin CSP: %w", err)
+		}
 		h := echo.WrapHandler(spaHandler(fsys))
-		e.GET("/admin", h)
-		e.GET("/admin/*", h)
+		e.GET("/admin", h, adminHeaders(csp))
+		e.GET("/admin/*", h, adminHeaders(csp))
 	} else {
 		if dev {
 			nuxt, err := startNuxtDev()
@@ -158,16 +197,16 @@ func serve(ctx context.Context, cmd *cli.Command) error {
 		e.HEAD(path, public)
 	}
 
-	api := e.Group("/admin/api/v1")
-	api.GET("/ht", healthHandler(pool))
 	auth := newAuthHandler(pool, authConfig{
 		secret:          []byte(secret),
 		accessTTL:       time.Duration(accessMins) * time.Minute,
 		refreshTTL:      time.Duration(refreshDays) * 24 * time.Hour,
+		idleTTL:         time.Duration(idleHours) * time.Hour,
 		strictPasswords: !dev,
+		baseURL:         baseURL,
 	})
-	auth.register(api)
-	auth.registerRedirects(api, &redirectHandler{store: &redirects.Store{DB: pool, Router: pub.Router()}, site: pub})
+	mountAdmin(e, auth, &adminDeps{pool: pool, site: pub, storage: store, baseURL: baseURL, themeDir: themeDir, dev: dev},
+		clientIPMiddleware(trusted), adminHeaders(apiCSP))
 
 	addr := net.JoinHostPort(cmd.String("api-host"), strconv.Itoa(cmd.Int("api-port")))
 	sc := echo.StartConfig{Address: addr}

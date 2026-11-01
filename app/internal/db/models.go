@@ -12,6 +12,17 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+type AuditLog struct {
+	ID          int64         `json:"id"`
+	ActorUserID uuid.NullUUID `json:"actor_user_id"`
+	Action      string        `json:"action"`
+	EntityType  string        `json:"entity_type"`
+	EntityID    string        `json:"entity_id"`
+	Diff        []byte        `json:"diff"`
+	Ip          *netip.Addr   `json:"ip"`
+	CreatedAt   time.Time     `json:"created_at"`
+}
+
 type Author struct {
 	ID            int64         `json:"id"`
 	Slug          string        `json:"slug"`
@@ -45,11 +56,37 @@ type Comment struct {
 	UpdatedAt   time.Time     `json:"updated_at"`
 }
 
+type Job struct {
+	ID          int64      `json:"id"`
+	Kind        string     `json:"kind"`
+	Payload     []byte     `json:"payload"`
+	RunAt       time.Time  `json:"run_at"`
+	Attempts    int32      `json:"attempts"`
+	MaxAttempts int32      `json:"max_attempts"`
+	LockedAt    *time.Time `json:"locked_at"`
+	LockedBy    *string    `json:"locked_by"`
+	LastError   *string    `json:"last_error"`
+	DoneAt      *time.Time `json:"done_at"`
+	CreatedAt   time.Time  `json:"created_at"`
+}
+
 type LegacyRecord struct {
 	LegacyKey  string    `json:"legacy_key"`
 	Kind       string    `json:"kind"`
 	Source     []byte    `json:"source"`
 	ImportedAt time.Time `json:"imported_at"`
+}
+
+type LoginFailure struct {
+	Key string    `json:"key"`
+	At  time.Time `json:"at"`
+}
+
+type LoginLockout struct {
+	Key       string    `json:"key"`
+	Until     time.Time `json:"until"`
+	Count     int32     `json:"count"`
+	UpdatedAt time.Time `json:"updated_at"`
 }
 
 type MediaLegacyPath struct {
@@ -159,6 +196,24 @@ type PostAuthor struct {
 	Position int32 `json:"position"`
 }
 
+type PostMedium struct {
+	PostID  int64 `json:"post_id"`
+	MediaID int64 `json:"media_id"`
+}
+
+type PostRevision struct {
+	ID          int64         `json:"id"`
+	PostID      int64         `json:"post_id"`
+	Kind        string        `json:"kind"`
+	Title       string        `json:"title"`
+	Excerpt     string        `json:"excerpt"`
+	Content     []byte        `json:"content"`
+	ContentText string        `json:"content_text"`
+	Seo         []byte        `json:"seo"`
+	UserID      uuid.NullUUID `json:"user_id"`
+	CreatedAt   time.Time     `json:"created_at"`
+}
+
 type PostTerm struct {
 	PostID    int64 `json:"post_id"`
 	TermID    int64 `json:"term_id"`
@@ -200,16 +255,17 @@ type Redirect struct {
 }
 
 type RefreshToken struct {
-	ID         uuid.UUID     `json:"id"`
-	UserID     uuid.UUID     `json:"user_id"`
-	TokenHash  []byte        `json:"token_hash"`
-	UserAgent  string        `json:"user_agent"`
-	Ip         string        `json:"ip"`
-	CreatedAt  time.Time     `json:"created_at"`
-	ExpiresAt  time.Time     `json:"expires_at"`
-	RevokedAt  *time.Time    `json:"revoked_at"`
-	ReplacedBy uuid.NullUUID `json:"replaced_by"`
-	SessionID  uuid.UUID     `json:"session_id"`
+	ID               uuid.UUID     `json:"id"`
+	UserID           uuid.UUID     `json:"user_id"`
+	TokenHash        []byte        `json:"token_hash"`
+	UserAgent        string        `json:"user_agent"`
+	Ip               string        `json:"ip"`
+	CreatedAt        time.Time     `json:"created_at"`
+	ExpiresAt        time.Time     `json:"expires_at"`
+	RevokedAt        *time.Time    `json:"revoked_at"`
+	ReplacedBy       uuid.NullUUID `json:"replaced_by"`
+	SessionID        uuid.UUID     `json:"session_id"`
+	SessionStartedAt time.Time     `json:"session_started_at"`
 }
 
 type Seo struct {
@@ -241,6 +297,12 @@ type Setting struct {
 	UpdatedAt time.Time `json:"updated_at"`
 }
 
+type SetupToken struct {
+	ID        int32     `json:"id"`
+	TokenHash []byte    `json:"token_hash"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
 type Term struct {
 	ID          int64       `json:"id"`
 	Taxonomy    string      `json:"taxonomy"`
@@ -266,4 +328,14 @@ type User struct {
 	LegacyKey    *string    `json:"legacy_key"`
 	Role         string     `json:"role"`
 	DisabledAt   *time.Time `json:"disabled_at"`
+	LastLoginAt  *time.Time `json:"last_login_at"`
+}
+
+type UserInvite struct {
+	TokenHash []byte        `json:"token_hash"`
+	UserID    uuid.UUID     `json:"user_id"`
+	CreatedBy uuid.NullUUID `json:"created_by"`
+	ExpiresAt time.Time     `json:"expires_at"`
+	UsedAt    *time.Time    `json:"used_at"`
+	CreatedAt time.Time     `json:"created_at"`
 }

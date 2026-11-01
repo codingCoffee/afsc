@@ -1,89 +1,116 @@
 <script setup lang="ts">
-import { LayoutDashboard, LogIn, LogOut } from '@lucide/vue'
+import { LogOut, UserRound } from '@lucide/vue'
 import { computed } from 'vue'
-import { Button } from '@/components/ui/button'
+import {
+  Breadcrumb,
+  BreadcrumbItem,
+  BreadcrumbList,
+  BreadcrumbPage,
+} from '@/components/ui/breadcrumb'
+import CspReportOnlyBanner from '@/components/settings/CspReportOnlyBanner.vue'
+import { Separator } from '@/components/ui/separator'
+import {
+  Sidebar,
+  SidebarContent,
+  SidebarFooter,
+  SidebarGroup,
+  SidebarGroupContent,
+  SidebarGroupLabel,
+  SidebarHeader,
+  SidebarInset,
+  SidebarMenu,
+  SidebarMenuButton,
+  SidebarMenuItem,
+  SidebarProvider,
+  SidebarTrigger,
+} from '@/components/ui/sidebar'
 
 const { user, signout } = useAuth()
+const nav = useNav()
+const route = useRoute()
 
-const year = new Date().getFullYear()
+const current = computed(() => {
+  for (const g of nav.value) {
+    const hit = g.items.find(i => route.path === i.to || route.path.startsWith(`${i.to}/`))
+    if (hit)
+      return hit.label
+  }
+  return route.path === '/profile' ? 'Profile' : ''
+})
 
-const links = computed(() => [
-  { label: 'Rules', to: { path: '/', hash: '#rules' }, mobile: false },
-  { label: 'Install', to: { path: '/', hash: '#install' }, mobile: false },
-  { label: 'Status', to: '/health', mobile: true },
-  ...(user.value?.role === 'admin'
-    ? [
-        { label: 'Users', to: '/model/users', mobile: false },
-        { label: 'Tokens', to: '/model/tokens', mobile: false },
-      ]
-    : []),
-])
+function active(to: string) {
+  return route.path === to || route.path.startsWith(`${to}/`)
+}
 </script>
 
 <template>
-  <div class="grain relative flex min-h-svh flex-col">
-    <header class="sticky top-0 z-40 border-b bg-background/85 backdrop-blur-md">
-      <div class="mx-auto flex h-14 max-w-7xl items-center gap-4 px-4 sm:px-8">
-        <NuxtLink to="/" class="group flex items-baseline gap-3">
-          <span class="font-display text-sm tracking-[0.2em] transition-colors group-hover:text-primary">AFSC</span>
-          <span class="hidden font-mono text-[10px] tracking-widest text-muted-foreground uppercase sm:inline">rev 0.1 / sys.cms</span>
+  <SidebarProvider>
+    <Sidebar collapsible="icon">
+      <SidebarHeader>
+        <NuxtLink to="/dashboard" class="flex h-8 items-center px-2 font-display text-sm tracking-[0.2em] hover:text-primary">
+          AFSC
         </NuxtLink>
-
-        <nav class="ml-auto flex items-center gap-4 sm:gap-7">
-          <NuxtLink
-            v-for="link in links"
-            :key="link.label"
-            :to="link.to"
-            class="font-mono text-[11px] tracking-widest text-muted-foreground uppercase transition-colors hover:text-foreground"
-            :class="{ 'hidden md:inline': !link.mobile }"
-            active-class="text-foreground"
-          >
-            {{ link.label }}
-          </NuxtLink>
-        </nav>
-
-        <div class="flex items-center gap-1">
-          <template v-if="user">
-            <Button as-child variant="ghost" size="sm" class="font-mono text-[11px] tracking-widest uppercase">
-              <NuxtLink to="/dashboard" :aria-label="`Dashboard for ${user.username}`">
-                <LayoutDashboard />
-                <span class="hidden max-w-32 truncate sm:inline">{{ user.username }}</span>
+      </SidebarHeader>
+      <SidebarContent>
+        <SidebarGroup v-for="g in nav" :key="g.label">
+          <SidebarGroupLabel class="font-mono text-[10px] tracking-widest uppercase">
+            {{ g.label }}
+          </SidebarGroupLabel>
+          <SidebarGroupContent>
+            <SidebarMenu>
+              <SidebarMenuItem v-for="item in g.items" :key="item.to">
+                <SidebarMenuButton as-child :is-active="active(item.to)" :tooltip="item.label">
+                  <NuxtLink :to="item.to">
+                    <component :is="item.icon" />
+                    <span>{{ item.label }}</span>
+                  </NuxtLink>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+            </SidebarMenu>
+          </SidebarGroupContent>
+        </SidebarGroup>
+      </SidebarContent>
+      <SidebarFooter>
+        <SidebarMenu>
+          <SidebarMenuItem>
+            <SidebarMenuButton as-child :is-active="route.path === '/profile'" tooltip="Profile">
+              <NuxtLink to="/profile">
+                <UserRound />
+                <span class="truncate">{{ user?.display_name || user?.username }}</span>
               </NuxtLink>
-            </Button>
-            <Button variant="ghost" size="sm" class="font-mono text-[11px] tracking-widest uppercase" aria-label="Sign out" @click="signout">
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+          <SidebarMenuItem>
+            <SidebarMenuButton tooltip="Sign out" @click="signout">
               <LogOut />
-              <span class="hidden sm:inline">Sign out</span>
-            </Button>
-          </template>
-          <Button v-else as-child size="sm" class="font-mono text-[11px] tracking-widest uppercase">
-            <NuxtLink to="/signin">
-              <LogIn />
-              Sign in
-            </NuxtLink>
-          </Button>
+              <span>Sign out</span>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+        </SidebarMenu>
+      </SidebarFooter>
+    </Sidebar>
+
+    <SidebarInset>
+      <header class="sticky top-0 z-30 flex h-14 items-center gap-2 border-b bg-background/85 px-4 backdrop-blur-md">
+        <SidebarTrigger class="-ml-1" />
+        <Separator orientation="vertical" class="mr-1 h-4" />
+        <Breadcrumb>
+          <BreadcrumbList>
+            <BreadcrumbItem>
+              <BreadcrumbPage class="font-mono text-[11px] tracking-widest uppercase">
+                {{ current }}
+              </BreadcrumbPage>
+            </BreadcrumbItem>
+          </BreadcrumbList>
+        </Breadcrumb>
+        <div class="ml-auto">
           <ThemeToggle />
         </div>
-      </div>
-    </header>
-
-    <main class="flex-1">
-      <slot />
-    </main>
-
-    <footer class="border-t">
-      <div class="mx-auto max-w-7xl px-4 pt-10 pb-6 sm:px-8">
-        <div class="flex flex-wrap items-center justify-between gap-4 font-mono text-[11px] tracking-widest text-muted-foreground uppercase">
-          <span>© {{ year }} AFSC</span>
-          <NuxtLink to="/health" class="flex items-center gap-2 transition-colors hover:text-foreground">
-            <span class="size-1.5 rounded-full bg-primary" />
-            system status
-          </NuxtLink>
-          <span>built to be ignored</span>
-        </div>
-        <p aria-hidden="true" class="text-outline mt-8 font-display text-[23vw] leading-[0.8] tracking-tight opacity-25 select-none xl:text-[17rem]">
-          AFSC
-        </p>
-      </div>
-    </footer>
-  </div>
+      </header>
+      <main class="mx-auto w-full max-w-7xl flex-1 px-4 py-6 sm:px-8 sm:py-8">
+        <CspReportOnlyBanner />
+        <slot />
+      </main>
+    </SidebarInset>
+  </SidebarProvider>
 </template>

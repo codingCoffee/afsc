@@ -87,7 +87,7 @@ func (q *Queries) GetActiveSession(ctx context.Context, sessionID uuid.UUID) (Ge
 }
 
 const getRefreshTokenByHashForUpdate = `-- name: GetRefreshTokenByHashForUpdate :one
-SELECT id, user_id, token_hash, user_agent, ip, created_at, expires_at, revoked_at, replaced_by, session_id FROM refresh_tokens WHERE token_hash = $1 FOR UPDATE
+SELECT id, user_id, token_hash, user_agent, ip, created_at, expires_at, revoked_at, replaced_by, session_id, session_started_at FROM refresh_tokens WHERE token_hash = $1 FOR UPDATE
 `
 
 func (q *Queries) GetRefreshTokenByHashForUpdate(ctx context.Context, tokenHash []byte) (RefreshToken, error) {
@@ -104,6 +104,7 @@ func (q *Queries) GetRefreshTokenByHashForUpdate(ctx context.Context, tokenHash 
 		&i.RevokedAt,
 		&i.ReplacedBy,
 		&i.SessionID,
+		&i.SessionStartedAt,
 	)
 	return i, err
 }

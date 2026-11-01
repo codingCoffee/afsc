@@ -13,6 +13,8 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/labstack/echo/v5"
+
+	"afsc/internal/authz"
 )
 
 const (
@@ -90,9 +92,11 @@ func setAuthCookie(c *echo.Context, name, value, path string, maxAge int) {
 	})
 }
 
-func (h *authHandler) setSessionCookies(c *echo.Context, access, refresh string) {
-	setAuthCookie(c, accessCookie, access, accessCookiePath, int(h.cfg.accessTTL.Seconds()))
-	setAuthCookie(c, refreshCookie, refresh, refreshCookiePath, int(h.cfg.refreshTTL.Seconds()))
+// setSessionCookies stores only the refresh token; the access token travels in the Authorization header.
+func (h *authHandler) setSessionCookies(c *echo.Context, refresh string, expires time.Time) {
+	setAuthCookie(c, refreshCookie, refresh, refreshCookiePath, max(int(time.Until(expires).Seconds()), 1))
+	// drop the access cookie older clients were given
+	setAuthCookie(c, accessCookie, "", accessCookiePath, -1)
 }
 
 func clearSessionCookies(c *echo.Context) {
@@ -100,15 +104,13 @@ func clearSessionCookies(c *echo.Context) {
 	setAuthCookie(c, refreshCookie, "", refreshCookiePath, -1)
 }
 
-// requireAuth accepts the access token from the Authorization header, falling back to the httpOnly cookie,
+// requireAuth accepts the access token only from the Authorization header, which a cross-site request can't set,
 // and rejects it if its session has since been revoked.
 func (h *authHandler) requireAuth(next echo.HandlerFunc) echo.HandlerFunc {
 	return func(c *echo.Context) error {
 		var token string
 		if auth := c.Request().Header.Get("Authorization"); strings.HasPrefix(auth, "Bearer ") {
 			token = strings.TrimPrefix(auth, "Bearer ")
-		} else if ck, err := c.Cookie(accessCookie); err == nil {
-			token = ck.Value
 		}
 		if token == "" {
 			return jsonError(c, http.StatusUnauthorized, "not signed in")
@@ -138,11 +140,29 @@ func (h *authHandler) requireAuth(next echo.HandlerFunc) echo.HandlerFunc {
 	}
 }
 
-func requireAdmin(next echo.HandlerFunc) echo.HandlerFunc {
-	return func(c *echo.Context) error {
-		if role, _ := c.Get(ctxRole).(string); role != "admin" {
-			return jsonError(c, http.StatusForbidden, "admins only")
+// requireCap rejects a role that lacks cap. The "capability" code tells it apart from ownership 403s.
+func requireCap(cp authz.Cap) echo.MiddlewareFunc {
+	return func(next echo.HandlerFunc) echo.HandlerFunc {
+		return func(c *echo.Context) error {
+			if role, _ := c.Get(ctxRole).(string); !authz.Can(role, cp) {
+				return c.JSON(http.StatusForbidden, map[string]string{"message": "your role can't do this", "code": "capability"})
+			}
+			return next(c)
 		}
-		return next(c)
 	}
+}
+
+func currentUser(c *echo.Context) uuid.UUID {
+	id, _ := c.Get(ctxUserID).(uuid.UUID)
+	return id
+}
+
+func currentRole(c *echo.Context) string {
+	r, _ := c.Get(ctxRole).(string)
+	return r
+}
+
+func actor(c *echo.Context) uuid.NullUUID {
+	id, ok := c.Get(ctxUserID).(uuid.UUID)
+	return uuid.NullUUID{UUID: id, Valid: ok}
 }

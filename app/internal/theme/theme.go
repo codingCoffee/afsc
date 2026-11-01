@@ -74,6 +74,7 @@ type state struct {
 	hasNode  map[string]bool
 	assets   map[string]string // path under assets/ -> content hash
 	strings  map[string]string
+	scripts  []string // CSP hashes of the inline scripts in templates
 }
 
 var defaultStrings = map[string]string{
@@ -173,6 +174,9 @@ func (t *Theme) build() (*state, error) {
 	}
 
 	tdir := filepath.Join(t.dir, "templates")
+	if st.scripts, err = templateScriptHashes(tdir); err != nil {
+		return nil, err
+	}
 	common := template.New("_").Funcs(t.funcMap(st)).Option("missingkey=error")
 	if src, err := os.ReadFile(filepath.Join(tdir, "base.html")); err == nil {
 		if _, err := common.New("base.html").Parse(string(src)); err != nil {

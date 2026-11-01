@@ -140,9 +140,9 @@ func loadRules(ctx context.Context, db querier) ([]*Rule, error) {
 
 // batch is a set of changes to the in-memory table, written in one transaction.
 type batch struct {
-	ctx     context.Context
-	rt      Router
-	t       *Table
+	ctx context.Context
+	rt  Router
+	t   *Table
 	// orig holds saved rules as loaded, for the ones touched; nfPaths are 404 log rows a new exact redirect answers
 	orig    map[*Rule]Rule
 	created []*Rule
@@ -436,7 +436,9 @@ func (s *Store) Import(ctx context.Context, lines []Line, flatten bool, user *st
 	b, err := s.withBatch(ctx, "manual", user, func(b *batch) error {
 		firstLine := map[string]int{}
 		for _, l := range lines {
-			fail := func(field, msg string) { rep.Errors = append(rep.Errors, LineError{Line: l.N, Field: field, Message: msg}) }
+			fail := func(field, msg string) {
+				rep.Errors = append(rep.Errors, LineError{Line: l.N, Field: field, Message: msg})
+			}
 			r, err := Normalize(l.Input, s.Router)
 			var fe *FieldError
 			if errors.As(err, &fe) {

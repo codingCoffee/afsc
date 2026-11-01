@@ -17,13 +17,15 @@ import (
 
 func (t *Theme) funcMap(st *state) template.FuncMap {
 	return template.FuncMap{
-		"head":          st.head,
+		"head":          t.head(st),
+		"footer":        t.footer,
 		"body_class":    BodyClass,
 		"post_class":    PostClass,
 		"url":           t.url,
 		"asset":         st.assetURL,
 		"image":         st.image,
 		"image_url":     t.imageURL(st),
+		"avatar":        st.avatar,
 		"menu":          t.menu(st),
 		"pagination":    st.pagination,
 		"breadcrumbs":   st.breadcrumbs,
@@ -32,7 +34,7 @@ func (t *Theme) funcMap(st *state) template.FuncMap {
 		"reading_time":  ReadingTime,
 		"date":          t.date,
 		"setting":       t.setting,
-		"theme_setting": st.themeSetting,
+		"theme_setting": t.themeSetting(st),
 		"t":             st.str,
 	}
 }
@@ -188,6 +190,51 @@ func (t *Theme) imageURL(st *state) func(m *Media, size ...string) (string, erro
 	}
 }
 
+// avatar renders an author's avatar at a theme size, or an initials SVG coloured from a hash of the name (§20.1).
+func (st *state) avatar(a *Author, size string) (template.HTML, error) {
+	if a == nil {
+		return "", nil
+	}
+	if _, _, _, ok := st.manifest.Images().Variant(content.MediaInfo{}, size); !ok {
+		return "", fmt.Errorf("avatar: image size %q is not declared in theme.json", size)
+	}
+	esc := template.HTMLEscapeString
+	if m := a.Avatar; m != nil {
+		v, w, h, err := st.variant("avatar", m, size)
+		if err != nil {
+			return "", err
+		}
+		b := `<img src="` + esc(content.MediaURL(m.info(), v)) + `" alt="` + esc(a.Name) + `"`
+		if w > 0 && h > 0 {
+			b += ` width="` + strconv.Itoa(w) + `" height="` + strconv.Itoa(h) + `"`
+		}
+		if srcset := st.manifest.Images().Srcset(m.info(), v); srcset != "" {
+			b += ` srcset="` + esc(srcset) + `" sizes="` + strconv.Itoa(w) + `px"`
+		}
+		return template.HTML(b + ` class="avatar" loading="lazy">`), nil
+	}
+	px := 96
+	if sz, ok := st.manifest.Images().Sizes[size]; ok && sz.Width > 0 {
+		px = sz.Width
+	}
+	hash := uint32(2166136261) // FNV-1a
+	for _, c := range []byte(a.Name) {
+		hash = (hash ^ uint32(c)) * 16777619
+	}
+	initials := ""
+	if words := strings.Fields(a.Name); len(words) > 0 {
+		initials = string([]rune(words[0])[:1])
+		if len(words) > 1 {
+			initials += string([]rune(words[len(words)-1])[:1])
+		}
+	}
+	n := strconv.Itoa(px)
+	return template.HTML(`<svg class="avatar avatar-initials" width="` + n + `" height="` + n + `" viewBox="0 0 ` + n + ` ` + n +
+		`" role="img" aria-label="` + esc(a.Name) + `"><rect width="100%" height="100%" fill="hsl(` +
+		strconv.Itoa(int(hash%360)) + ` 45% 40%)"/><text x="50%" y="50%" dy=".35em" text-anchor="middle" fill="#fff" ` +
+		`font-family="sans-serif" font-size="` + strconv.Itoa(px*2/5) + `">` + esc(strings.ToUpper(initials)) + `</text></svg>`), nil
+}
+
 func (t *Theme) menu(st *state) func(d *PageData, loc string) ([]*MenuItem, error) {
 	return func(d *PageData, loc string) ([]*MenuItem, error) {
 		if !slices.Contains(st.manifest.MenuLocations, loc) {
@@ -314,8 +361,24 @@ func (st *state) breadcrumbs(d *PageData) []Crumb {
 	return out
 }
 
-// head prints the title, SEO tags, theme assets and feed links. Without resolved SEO it prints a bare title.
-func (st *state) head(d *PageData) (template.HTML, error) {
+// head prints headTags followed by the admin's head snippet (§7.6).
+func (t *Theme) head(st *state) func(d *PageData) (template.HTML, error) {
+	return func(d *PageData) (template.HTML, error) {
+		h, err := st.headTags(d)
+		if err != nil {
+			return "", err
+		}
+		return h + template.HTML(t.opts.Backend.Settings().Snippets.HeadHTML), nil
+	}
+}
+
+// footer prints the admin's body-end snippet; themes call it right before </body>.
+func (t *Theme) footer(d *PageData) template.HTML {
+	return template.HTML(t.opts.Backend.Settings().Snippets.BodyEndHTML)
+}
+
+// headTags prints the title, SEO tags, theme assets and feed links. Without resolved SEO it prints a bare title.
+func (st *state) headTags(d *PageData) (template.HTML, error) {
 	esc := template.HTMLEscapeString
 	var b strings.Builder
 	if h := d.Head; h != nil {
@@ -462,12 +525,18 @@ func (t *Theme) setting(path string) (any, error) {
 	return v, nil
 }
 
-func (st *state) themeSetting(key string) (any, error) {
-	s, ok := st.manifest.Settings[key]
-	if !ok {
-		return nil, fmt.Errorf("theme_setting: %q is not declared in theme.json", key)
+// themeSetting returns the admin's value for this theme, else the theme.json default.
+func (t *Theme) themeSetting(st *state) func(key string) (any, error) {
+	return func(key string) (any, error) {
+		s, ok := st.manifest.Settings[key]
+		if !ok {
+			return nil, fmt.Errorf("theme_setting: %q is not declared in theme.json", key)
+		}
+		if v, ok := t.opts.Backend.Settings().ThemeSettings[st.manifest.Name][key]; ok {
+			return v, nil
+		}
+		return s.Default, nil
 	}
-	return s.Default, nil
 }
 
 func (st *state) str(key string) (string, error) {

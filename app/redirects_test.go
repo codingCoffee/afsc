@@ -31,8 +31,9 @@ func (discardStorage) Put(_ context.Context, _ string, body io.ReadSeeker, _ int
 }
 
 type apiClient struct {
-	t *testing.T
-	e *echo.Echo
+	t      *testing.T
+	e      *echo.Echo
+	origin string // sent as Origin on every request when set
 }
 
 type apiResp struct {
@@ -56,6 +57,9 @@ func (c apiClient) do(token, method, path, contentType, body string) apiResp {
 	}
 	if token != "" {
 		req.Header.Set("Authorization", "Bearer "+token)
+	}
+	if c.origin != "" {
+		req.Header.Set("Origin", c.origin)
 	}
 	w := httptest.NewRecorder()
 	c.e.ServeHTTP(w, req)

@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/url"
+	"reflect"
 	"regexp"
 	"slices"
 	"strings"
@@ -117,10 +118,40 @@ func DefaultNoisePatterns() []string {
 }
 
 type Discussion struct {
-	CommentsEnabled bool `json:"comments_enabled"`
-	CloseAfterDays  int  `json:"close_after_days"`
-	ThreadDepth     int  `json:"thread_depth"`
+	CommentsEnabled        bool `json:"comments_enabled"`
+	CloseAfterDays         int  `json:"close_after_days"`
+	ThreadDepth            int  `json:"thread_depth"`
+	CommentIPRetentionDays int  `json:"comment_ip_retention_days"`
+	SpamRetentionDays      int  `json:"spam_retention_days"`
 }
+
+// Media holds upload size limits in MB per file class (§7.4).
+type Media struct {
+	MaxImageMB int `json:"max_image_mb"`
+	MaxVideoMB int `json:"max_video_mb"`
+	MaxAudioMB int `json:"max_audio_mb"`
+	MaxPDFMB   int `json:"max_pdf_mb"`
+}
+
+// Security holds the public CSP additions and toggles (§7.3, §7.6). ExtraCSPHosts maps a directive to origins.
+type Security struct {
+	ExtraCSPHosts map[string][]string `json:"extra_csp_hosts"`
+	CSPReportOnly bool                `json:"csp_report_only"`
+	HSTS          bool                `json:"hsts"`
+}
+
+// Snippets are admin-only, unsanitized HTML injected by {{head}} and {{footer}} (§7.6).
+type Snippets struct {
+	HeadHTML    string `json:"head_html"`
+	BodyEndHTML string `json:"body_end_html"`
+}
+
+// CSPDirectives are the directives that accept extra hosts.
+var CSPDirectives = []string{"script-src", "style-src", "img-src", "font-src", "connect-src", "frame-src"}
+
+var cspHost = regexp.MustCompile(`^https://(\*\.)?[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+(:[0-9]{1,5})?$`)
+
+const maxSnippetBytes = 64 << 10
 
 type Cache struct {
 	PageTTLSeconds int `json:"page_ttl_seconds"`
@@ -134,9 +165,15 @@ type All struct {
 	SEO        SEO        `json:"seo"`
 	Discussion Discussion `json:"discussion"`
 	Cache      Cache      `json:"cache"`
+	Media      Media      `json:"media"`
+	Security   Security   `json:"security"`
+	Snippets   Snippets   `json:"snippets"`
+	// ThemeSettings maps a theme name to its values, so switching themes keeps each theme's settings.
+	ThemeSettings map[string]map[string]any `json:"theme_settings"`
 }
 
-var Keys = []string{"site", "permalinks", "reading", "seo", "discussion", "cache"}
+var Keys = []string{"site", "permalinks", "reading", "seo", "discussion", "cache", "media", "security", "snippets",
+	"theme_settings"}
 
 // TemplateTypes are the page types that have SEO title and description templates (§8.2).
 var TemplateTypes = []string{"post", "page", "category", "tag", "author", "home", "search", "404", "date"}
@@ -164,8 +201,11 @@ func Defaults() All {
 			Sitemaps:             Sitemaps{PageSize: 1000},
 			NotFound:             NotFound{NoisePatterns: DefaultNoisePatterns(), RetentionDays: 90},
 		},
-		Discussion: Discussion{CommentsEnabled: true, ThreadDepth: 3},
-		Cache:      Cache{PageTTLSeconds: 60},
+		Discussion:    Discussion{CommentsEnabled: true, ThreadDepth: 3, CommentIPRetentionDays: 90, SpamRetentionDays: 30},
+		Cache:         Cache{PageTTLSeconds: 60},
+		Media:         Media{MaxImageMB: 20, MaxVideoMB: 500, MaxAudioMB: 50, MaxPDFMB: 50},
+		Security:      Security{ExtraCSPHosts: map[string][]string{}, HSTS: true},
+		ThemeSettings: map[string]map[string]any{},
 	}
 }
 
@@ -177,13 +217,9 @@ func Decode(b []byte) (All, map[string]bool, error) {
 	}
 	all := Defaults()
 	present := map[string]bool{}
-	targets := map[string]any{
-		"site": &all.Site, "permalinks": &all.Permalinks, "reading": &all.Reading, "seo": &all.SEO, "discussion": &all.Discussion,
-		"cache": &all.Cache,
-	}
 	for key, raw := range groups {
-		target, ok := targets[key]
-		if !ok {
+		target := all.groupPtr(key)
+		if target == nil {
 			return All{}, nil, fmt.Errorf("unknown settings key %q", key)
 		}
 		dec := json.NewDecoder(bytes.NewReader(raw))
@@ -194,6 +230,51 @@ func Decode(b []byte) (All, map[string]bool, error) {
 		present[key] = true
 	}
 	return all, present, all.Validate()
+}
+
+func (a *All) groupPtr(key string) any {
+	switch key {
+	case "site":
+		return &a.Site
+	case "permalinks":
+		return &a.Permalinks
+	case "reading":
+		return &a.Reading
+	case "seo":
+		return &a.SEO
+	case "discussion":
+		return &a.Discussion
+	case "cache":
+		return &a.Cache
+	case "media":
+		return &a.Media
+	case "security":
+		return &a.Security
+	case "snippets":
+		return &a.Snippets
+	case "theme_settings":
+		return &a.ThemeSettings
+	}
+	return nil
+}
+
+// ReplaceGroup sets group key to b decoded over the group's defaults, rejecting unknown fields. It doesn't validate.
+func (a *All) ReplaceGroup(key string, b []byte) error {
+	d := Defaults()
+	src, dst := d.groupPtr(key), a.groupPtr(key)
+	if src == nil {
+		return fmt.Errorf("unknown settings group %q", key)
+	}
+	dec := json.NewDecoder(bytes.NewReader(b))
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(src); err != nil {
+		return err
+	}
+	if dec.More() {
+		return fmt.Errorf("unexpected data after the %s value", key)
+	}
+	reflect.ValueOf(dst).Elem().Set(reflect.ValueOf(src).Elem())
+	return nil
 }
 
 // Group returns the value stored for key.
@@ -211,6 +292,14 @@ func (a All) Group(key string) any {
 		return a.Discussion
 	case "cache":
 		return a.Cache
+	case "media":
+		return a.Media
+	case "security":
+		return a.Security
+	case "snippets":
+		return a.Snippets
+	case "theme_settings":
+		return a.ThemeSettings
 	}
 	return nil
 }
@@ -303,13 +392,50 @@ func (a All) Validate() error {
 	if a.Cache.PageTTLSeconds < 0 || a.Cache.PageTTLSeconds > 86400 {
 		bad("cache.page_ttl_seconds: must be 0-86400")
 	}
+	if d := a.Discussion.CommentIPRetentionDays; d < 1 || d > 3650 {
+		bad("discussion.comment_ip_retention_days: must be 1-3650")
+	}
+	if d := a.Discussion.SpamRetentionDays; d < 1 || d > 3650 {
+		bad("discussion.spam_retention_days: must be 1-3650")
+	}
+	for name, mb := range map[string]int{"max_image_mb": a.Media.MaxImageMB, "max_video_mb": a.Media.MaxVideoMB,
+		"max_audio_mb": a.Media.MaxAudioMB, "max_pdf_mb": a.Media.MaxPDFMB} {
+		if mb < 1 || mb > 4096 {
+			bad("media.%s: must be 1-4096", name)
+		}
+	}
+	for dir, hosts := range a.Security.ExtraCSPHosts {
+		if !slices.Contains(CSPDirectives, dir) {
+			bad("security.extra_csp_hosts: unknown directive %q", dir)
+			continue
+		}
+		if len(hosts) > 50 {
+			bad("security.extra_csp_hosts.%s: at most 50 origins", dir)
+		}
+		for _, h := range hosts {
+			if !cspHost.MatchString(h) {
+				bad("security.extra_csp_hosts.%s: %q must be an https origin, optionally with a leading *.", dir, h)
+			}
+		}
+	}
+	if len(a.Snippets.HeadHTML) > maxSnippetBytes || len(a.Snippets.BodyEndHTML) > maxSnippetBytes {
+		bad("snippets: each snippet must be at most 64 KB")
+	}
 
 	if len(errs) > 0 {
 		slices.Sort(errs)
-		return fmt.Errorf("invalid settings: %s", strings.Join(errs, "; "))
+		return Invalid(errs)
 	}
 	return nil
 }
+
+// Invalid lists validation problems, each "group.field: message".
+type Invalid []string
+
+func (e Invalid) Error() string { return "invalid settings: " + strings.Join(e, "; ") }
+
+// ValidCSPHost reports whether h is an https origin, optionally with a leading "*.".
+func ValidCSPHost(h string) bool { return cspHost.MatchString(h) }
 
 // Refs returns pointers to every reference in a, with the kind of entity each must point at.
 func (a *All) Refs() map[string]**Ref {

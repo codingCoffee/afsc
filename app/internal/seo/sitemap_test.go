@@ -86,7 +86,9 @@ func TestSitemapWriters(t *testing.T) {
 func TestSitemapCheckRejects(t *testing.T) {
 	head := `<?xml version="1.0" encoding="UTF-8"?><urlset xmlns="` + seo.NSSitemap + `" xmlns:image="` + seo.NSImage +
 		`" xmlns:video="` + seo.NSVideo + `">`
-	url := func(inner string) string { return head + `<url><loc>https://blog.example.com/</loc>` + inner + `</url></urlset>` }
+	url := func(inner string) string {
+		return head + `<url><loc>https://blog.example.com/</loc>` + inner + `</url></urlset>`
+	}
 	video := func(inner string) string { return url(`<video:video>` + inner + `</video:video>`) }
 	cases := []struct{ name, doc string }{
 		{"empty urlset", head + `</urlset>`},

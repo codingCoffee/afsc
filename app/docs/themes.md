@@ -36,8 +36,9 @@ Unknown fields are errors.
   "menu_locations": ["primary", "footer"],
   "content": {"allowed_classes": ["lead", "callout"]},
   "assets": [{"path": "style.css"}, {"path": "app.js", "defer": true}],
-  "csp": {"script": [], "style": [], "frame": [], "img": [], "connect": []},
-  "settings": {"show_reading_time": {"type": "bool", "label": "Show reading time", "default": true}},
+  "csp": {"script": [], "style": [], "frame": [], "img": [], "font": [], "connect": []},
+  "settings": {"show_reading_time": {"type": "bool", "label": "Show reading time", "default": true},
+               "layout": {"type": "select", "label": "Layout", "default": "wide", "options": ["wide", "narrow"]}},
   "strings": {"read_more": "Continue reading"},
   "posts_per_page": {"home": 5, "category": 12}
 }
@@ -51,8 +52,8 @@ Unknown fields are errors.
 | `menu_locations` | Locations menus can be assigned to; `menu` only accepts these. |
 | `content.allowed_classes` | Classes content may use (`classes` attributes). Unknown classes are rejected on save and dropped on import. |
 | `assets` | Files under `assets/` the page head includes (`head`, M2). Each must exist. |
-| `csp` | Extra hosts for the Content Security Policy (§7.3). |
-| `settings` | Theme options with defaults. Admins edit them from M3; until then `theme_setting` returns the default. |
+| `csp` | Extra origins per directive (`script`, `style`, `frame`, `img`, `font`, `connect`) for the public Content Security Policy. Each must be an `https://` origin, optionally with a leading `*.`. See [Content Security Policy](#content-security-policy). |
+| `settings` | Theme options: `type` (`bool`, `string`, `number`, `select` with `options`, or `color` as `#rrggbb`), `label` and a `default` of that type. Admins edit them under Settings → Theme; `theme_setting` returns the admin's value, else the default. |
 | `strings` | Static strings for `t`. They override the built-in defaults listed under `t`. |
 | `posts_per_page` | Per-archive overrides of the site's posts-per-page: `home` (also the posts page), `category`, `tag`, `author`, `date`, `search`. 1–100. |
 
@@ -67,7 +68,7 @@ With `base.html`, every page is rendered through it. Page templates only `define
 <!doctype html>
 <html lang="{{.Site.Language}}">
 <head><meta charset="utf-8">{{head .}}</head>
-<body class="{{body_class .}}">{{block "content" .}}{{end}}</body>
+<body class="{{body_class .}}">{{block "content" .}}{{end}}{{footer .}}</body>
 </html>
 
 <!-- single.html -->
@@ -249,6 +250,7 @@ The class funcs use it, so CSS written for WordPress ids keeps working.
 - one `<script type="application/ld+json">` with the schema.org `@graph`
 - the theme's `assets` from theme.json: `.css` as stylesheets, `.js` as scripts with `defer`/`async`
 - RSS `link rel=alternate` for the site feed, plus the archive feed on category, tag and author archives
+- the admin's head snippet (`snippets.head_html`), unchanged
 
 Add your own tags after it. Don't print another `<title>` or robots tag.
 
@@ -424,9 +426,20 @@ link.
 {{setting "site.tagline"}}  {{if setting "discussion.comments_enabled"}}…{{end}}
 ```
 
+### footer
+
+`footer .` prints the admin's body-end snippet (`snippets.body_end_html`), unchanged. Call it once, right before
+`</body>`.
+
+```html
+{{footer .}}
+</body>
+```
+
 ### theme_setting
 
-`theme_setting "key"` gives a theme option from theme.json. An undeclared key is an error.
+`theme_setting "key"` gives a theme option: the value an admin saved for this theme (by theme.json `name`), else
+the theme.json default. An undeclared key is an error.
 
 ```html
 {{if theme_setting "show_reading_time"}}…{{end}}
@@ -462,9 +475,18 @@ given. Use it where you need a URL rather than an `<img>`, for example a CSS bac
 <div class="hero" style="background-image: url('{{image_url .Post.FeaturedMedia "large"}}')"></div>
 ```
 
-Not yet available: `head` and `footer` arrive with the SEO milestone (M2), `avatar` with M3, and `related_posts` and
-`share_links` with M5. Until `head` lands, themes write their own `<title>`, stylesheet links and `noindex` meta, as
-the default theme does.
+### avatar
+
+`avatar author "size"` gives the author's avatar as an `<img class="avatar">` at a theme image size, with the
+author's name as `alt`. An author without an avatar gets an inline initials SVG (`class="avatar avatar-initials"`,
+the size's width square, 96 px for `"full"`), coloured from a hash of the name. A nil author gives nothing, and an
+undeclared size is an error.
+
+```html
+{{range .Post.Authors}}<a href="{{url .}}">{{avatar . "thumbnail"}} {{.Name}}</a>{{end}}
+```
+
+Not yet available: `related_posts` and `share_links` arrive with M5.
 
 ## Images
 
@@ -583,6 +605,30 @@ What this means for templates:
 - **Purging.** Changing a post purges its URL, the home page, the posts page and its date, term and author archives,
   each with every page number and its feed, plus the sitemaps that list it and the sitemap index. Settings, menus, imports and `--rerender` purge everything. In dev mode,
   a theme reload purges everything.
+
+## Content Security Policy
+
+Every public page carries a `Content-Security-Policy` header built from:
+
+- core defaults: `'self'` for everything, `style-src 'unsafe-inline'`, `data:` images and fonts, `object-src 'none'`,
+  `frame-ancestors 'self'`, and `frame-src` for the embed providers content renders (YouTube nocookie, Vimeo,
+  Spotify, SoundCloud, Google Maps)
+- theme.json `csp` origins
+- the admin's extra origins (`security.extra_csp_hosts`)
+- a `'sha256-…'` hash of every inline `<script>` in the templates, node partials and the admin's snippets
+
+Hashes are computed when the theme, settings or snippets load, never per request, so cached pages and 304s keep a
+matching policy. Nonces aren't used for that reason. What this means for themes:
+
+- **Inline scripts must be static.** The hash is taken from the template source, so a `{{…}}` action inside an inline
+  script breaks it. Put dynamic values in `data-` attributes or a JSON block (`type="application/json"`), or ship the
+  script as an asset.
+- **No inline event handlers** (`onclick=` and friends); they are never allowed.
+- Third-party scripts, fonts, frames and API hosts must be listed in `csp`.
+
+With `security.csp_report_only` on, the header is `Content-Security-Policy-Report-Only` instead. Pages also get
+`X-Content-Type-Options: nosniff`, `Referrer-Policy: strict-origin-when-cross-origin` and, when `security.hsts` is on
+and the base URL is https, `Strict-Transport-Security: max-age=31536000`. Media under `/m/` keeps its own headers.
 
 ## afsc theme check
 

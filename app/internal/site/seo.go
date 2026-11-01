@@ -117,6 +117,8 @@ func (st *Site) buildHead(ctx context.Context, snap *snapshot, d *theme.PageData
 		row, err = st.seoRow(ctx, "term", d.Term.ID)
 	case d.Author != nil:
 		row, err = st.seoRow(ctx, "author", d.Author.ID)
+	case d.Kind == theme.KindHome:
+		row, err = st.seoRow(ctx, "home", 0)
 	}
 	if err != nil {
 		return err

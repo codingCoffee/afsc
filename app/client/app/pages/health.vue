@@ -11,6 +11,7 @@ interface Health {
   api: boolean
 }
 
+definePageMeta({ layout: 'auth' })
 useHead({ title: 'Status · AFSC' })
 
 const down: Health = { all: false, db: false, api: false }

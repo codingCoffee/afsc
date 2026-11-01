@@ -1,5 +1,19 @@
 export type Role = 'admin' | 'editor' | 'author' | 'contributor'
 
+export type Cap =
+  | 'self'
+  | 'posts.edit_own'
+  | 'posts.publish_own'
+  | 'posts.edit_others'
+  | 'pages.edit'
+  | 'media.upload'
+  | 'content.manage'
+  | 'comments.moderate'
+  | 'content.raw_html'
+  | 'users.manage'
+  | 'settings.manage'
+  | 'audit.read'
+
 export interface User {
   id: string
   username: string
@@ -9,6 +23,7 @@ export interface User {
   display_name: string
   role: Role
   created_at: string
+  caps: Cap[]
 }
 
 export interface Page<T> {
@@ -24,20 +39,15 @@ interface Session {
   user: User
 }
 
-export interface SignupInput {
-  username: string
-  email: string
-  password: string
-  first_name: string
-  last_name: string
-}
-
-type FetchOptions = {
+export type FetchOptions = {
   method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'
-  body?: Record<string, unknown>
+  body?: unknown
+  query?: Record<string, string | number | boolean | undefined>
+  headers?: Record<string, string>
+  responseType?: 'json' | 'blob' | 'text'
 }
 
-const API = '/admin/api/v1'
+export const API = '/admin/api/v1'
 const REFRESH_LEAD_MS = 30_000
 const RETRY_MS = 10_000
 
@@ -48,8 +58,8 @@ export function statusOf(e: unknown): number | undefined {
   return (e as { statusCode?: number })?.statusCode
 }
 
-export function errorData(e: unknown): { message?: string, field?: string } {
-  return (e as { data?: { message?: string, field?: string } })?.data ?? {}
+export function errorData<T = Record<string, unknown>>(e: unknown): { message?: string, field?: string, code?: string } & Partial<T> {
+  return (e as { data?: { message?: string, field?: string, code?: string } & Partial<T> })?.data ?? {}
 }
 
 export function useAuth() {
@@ -118,8 +128,9 @@ export function useAuth() {
     apply(await $fetch<Session>(`${API}/signin`, { method: 'POST', body: { login, password } }))
   }
 
-  async function signup(input: SignupInput) {
-    apply(await $fetch<Session>(`${API}/signup`, { method: 'POST', body: input }))
+  // setup, invite acceptance and sign-in all answer with a session
+  async function startSession(url: string, body: Record<string, unknown>) {
+    apply(await $fetch<Session>(url, { method: 'POST', body }))
   }
 
   async function signout() {
@@ -134,9 +145,12 @@ export function useAuth() {
 
   async function authFetch<T>(url: string, opts: FetchOptions = {}): Promise<T> {
     const call = () => $fetch<T>(url, {
-      ...opts,
-      headers: accessToken.value ? { Authorization: `Bearer ${accessToken.value}` } : {},
-    })
+      method: opts.method,
+      body: opts.body as BodyInit | Record<string, unknown> | undefined,
+      query: opts.query,
+      responseType: opts.responseType,
+      headers: { ...opts.headers, ...(accessToken.value ? { Authorization: `Bearer ${accessToken.value}` } : {}) },
+    } as Parameters<typeof $fetch>[1]) as Promise<T>
     try {
       return await call()
     }
@@ -152,5 +166,9 @@ export function useAuth() {
     return user.value
   }
 
-  return { user, accessToken, refresh, refreshIfStale, signin, signup, signout, authFetch, fetchMe }
+  function can(cap: Cap) {
+    return !!user.value?.caps?.includes(cap)
+  }
+
+  return { user, accessToken, refresh, refreshIfStale, signin, startSession, signout, authFetch, fetchMe, can }
 }

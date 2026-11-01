@@ -198,6 +198,26 @@ WHERE (seo.title, seo.description, seo.canonical, seo.robots_noindex, seo.robots
        EXCLUDED.focus_keyphrase, EXCLUDED.breadcrumb_title, EXCLUDED.is_cornerstone)
 RETURNING (xmax = 0)`
 
+// sqlSyncPostMedia rebuilds post_media (Q14) for the imported posts, like migration 0008's backfill.
+const sqlSyncPostMedia = `
+WITH want AS (
+  SELECT DISTINCT p.id AS post_id, m.id AS media_id
+  FROM posts p
+  CROSS JOIN LATERAL (
+    SELECT v FROM jsonb_path_query(p.content, '$.**.mediaId') v
+    UNION ALL SELECT v FROM jsonb_path_query(p.content, '$.**.posterMediaId') v
+    UNION ALL SELECT to_jsonb(p.featured_media_id) WHERE p.featured_media_id IS NOT NULL
+  ) x
+  JOIN media m ON m.id = CASE WHEN jsonb_typeof(x.v) = 'number' THEN trunc(x.v::numeric) END
+  WHERE p.id = ANY($1::bigint[])
+), gone AS (
+  DELETE FROM post_media pm
+  WHERE pm.post_id = ANY($1::bigint[])
+    AND NOT EXISTS (SELECT 1 FROM want w WHERE w.post_id = pm.post_id AND w.media_id = pm.media_id)
+)
+INSERT INTO post_media (post_id, media_id) SELECT post_id, media_id FROM want
+ON CONFLICT DO NOTHING`
+
 const sqlDeleteStaleVideos = `
 DELETE FROM post_videos v
 WHERE v.source = 'import' AND v.post_id = ANY($1::bigint[])

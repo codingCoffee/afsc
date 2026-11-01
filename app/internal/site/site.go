@@ -31,6 +31,8 @@ type Config struct {
 	Imgproxy media.Imager
 	// CacheBytes bounds the in-process page cache; 0 disables it.
 	CacheBytes int64
+	// PreviewKey signs /?preview= tokens (see PreviewKey); empty means a random per-process key.
+	PreviewKey []byte
 }
 
 // maxEntryBytes caps a single cached page.
@@ -45,6 +47,7 @@ type Site struct {
 	snap      atomic.Pointer[snapshot]
 	refreshMu sync.Mutex // serialises snapshot loads so an older load never replaces a newer one
 	cache     *pagecache.Cache
+	sec       atomic.Pointer[secHeaders]
 	host      string
 	listening atomic.Bool
 	nf        *notFoundLog
@@ -78,8 +81,8 @@ func New(ctx context.Context, cfg Config) (*Site, error) {
 	return st, nil
 }
 
-// Run refreshes cached site data, listens for cache events, flushes the 404 log and hit counters and prunes the
-// 404 log daily until ctx is done, then flushes once more.
+// Run refreshes cached site data, listens for cache events and flushes the 404 log and hit counters until ctx is
+// done, then flushes once more. The 404 log is pruned by the not_found.prune job.
 func (st *Site) Run(ctx context.Context) {
 	listenDone := make(chan struct{})
 	go func() {
@@ -92,18 +95,15 @@ func (st *Site) Run(ctx context.Context) {
 		every = 2 * time.Second
 	}
 	refresh, flush, hits := time.NewTicker(every), time.NewTicker(10*time.Second), time.NewTicker(60*time.Second)
-	prune := time.NewTicker(24 * time.Hour)
 	defer refresh.Stop()
 	defer flush.Stop()
 	defer hits.Stop()
-	defer prune.Stop()
 	flushHits := func(ctx context.Context) {
 		st.flushRedirectHits(ctx)
 		if st.media != nil {
 			st.media.FlushHits(ctx)
 		}
 	}
-	st.pruneNotFound(ctx)
 	for {
 		select {
 		case <-ctx.Done():
@@ -114,8 +114,6 @@ func (st *Site) Run(ctx context.Context) {
 			return
 		case <-hits.C:
 			flushHits(ctx)
-		case <-prune.C:
-			st.pruneNotFound(ctx)
 		case <-refresh.C:
 			_ = st.refresh(ctx)
 		case <-flush.C:
@@ -149,7 +147,13 @@ func (st *Site) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	snap := st.snap.Load()
+	if r.URL.Path == "/" && r.URL.Query().Has("preview") {
+		st.setSecurityHeaders(w, snap)
+		st.servePreview(w, r, snap)
+		return
+	}
 	if _, ok := snap.seoFile(r.URL.Path); ok {
+		st.setSecurityHeaders(w, snap)
 		st.servePublic(w, r, snap)
 		return
 	}
@@ -159,10 +163,12 @@ func (st *Site) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		if st.media != nil && st.media.ServeMedia(w, r) {
 			return
 		}
+		st.setSecurityHeaders(w, snap)
 		resp, err := st.render(snap, r, notFound(), r.URL.RawQuery)
 		st.finish(w, r, resp, err)
 	case st.media != nil && st.media.ServeLegacy(w, r):
 	default:
+		st.setSecurityHeaders(w, snap)
 		st.servePublic(w, r, snap)
 	}
 }

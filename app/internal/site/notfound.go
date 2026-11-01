@@ -196,29 +196,34 @@ func (st *Site) flushRedirectHits(ctx context.Context) {
 	}
 }
 
-// pruneNotFound deletes 404 log rows not seen within seo.not_found.retention_days. Replicas skip it while another
-// one is pruning.
 func (st *Site) pruneNotFound(ctx context.Context) {
+	if err := st.PruneNotFound(ctx); err != nil {
+		st.cfg.Logf("site: prune not-found log: %v", err)
+	}
+}
+
+// PruneNotFound deletes 404 log rows not seen within seo.not_found.retention_days (the not_found.prune job).
+// Replicas skip it while another one is pruning.
+func (st *Site) PruneNotFound(ctx context.Context) error {
 	days := st.snap.Load().settings.SEO.NotFound.RetentionDays
 	tx, err := st.db.Begin(ctx)
 	if err != nil {
-		st.cfg.Logf("site: prune not-found log: %v", err)
-		return
+		return err
 	}
 	defer tx.Rollback(ctx)
 	var locked bool
 	if err := tx.QueryRow(ctx, `SELECT pg_try_advisory_xact_lock($1)`, int64(pruneLockKey)).Scan(&locked); err != nil || !locked {
-		return
+		return err
 	}
 	tag, err := tx.Exec(ctx, sqlPruneNotFound, days)
 	if err == nil {
 		err = tx.Commit(ctx)
 	}
 	if err != nil {
-		st.cfg.Logf("site: prune not-found log: %v", err)
-		return
+		return err
 	}
 	if n := tag.RowsAffected(); n > 0 {
 		st.cfg.Logf("site: pruned %d not-found log rows older than %d days", n, days)
 	}
+	return nil
 }
