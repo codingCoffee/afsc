@@ -1,0 +1,3 @@
+{"legacy_key":"wp:user:1","email":"admin@example.com","display_name":"Admin A","role":"admin","disabled":false}
+{"legacy_key":"wp:user:2","email":"author.a@example.com","display_name":"Author A","role":"author","disabled":false}
+{"legacy_key":"wp:user:3","email":"editor.b@example.com","display_name":"Editor B","role":"editor","disabled":true}

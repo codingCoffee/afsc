@@ -70,6 +70,7 @@ SELECT u.id, u.role
 FROM refresh_tokens rt
 JOIN users u ON u.id = rt.user_id
 WHERE rt.session_id = $1 AND rt.revoked_at IS NULL AND rt.expires_at > now()
+  AND u.disabled_at IS NULL
 LIMIT 1
 `
 

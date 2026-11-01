@@ -1,0 +1,67 @@
+{"type":"doc","content":[
+  {"type":"heading","attrs":{"level":2,"id":"intro","textAlign":"left","classes":"lead"},"content":[{"type":"text","text":"Introduction"}]},
+  {"type":"paragraph","attrs":{"classes":"lead"},"content":[
+    {"type":"text","text":"Plain, "},
+    {"type":"text","text":"bold","marks":[{"type":"bold"}]},
+    {"type":"text","text":", "},
+    {"type":"text","text":"italic","marks":[{"type":"italic"}]},
+    {"type":"text","text":", "},
+    {"type":"text","text":"underline","marks":[{"type":"underline"}]},
+    {"type":"text","text":", "},
+    {"type":"text","text":"strike","marks":[{"type":"strike"}]},
+    {"type":"text","text":", "},
+    {"type":"text","text":"code","marks":[{"type":"code"}]},
+    {"type":"text","text":", H"},
+    {"type":"text","text":"2","marks":[{"type":"subscript"}]},
+    {"type":"text","text":"O, x"},
+    {"type":"text","text":"2","marks":[{"type":"superscript"}]},
+    {"type":"text","text":", "},
+    {"type":"text","text":"a link","marks":[{"type":"link","attrs":{"href":"https://example.com/","title":"Example","rel":"nofollow"}}]},
+    {"type":"text","text":" and "},
+    {"type":"text","text":"color","marks":[{"type":"textStyle","attrs":{"color":"#c00","backgroundColor":"rgb(255, 255, 0)"}}]},
+    {"type":"hardBreak"},
+    {"type":"text","text":"Second line & <escaped>."}
+  ]},
+  {"type":"readMore"},
+  {"type":"blockquote","attrs":{"classes":"callout"},"content":[{"type":"paragraph","content":[{"type":"text","text":"A quote."}]}]},
+  {"type":"bulletList","content":[
+    {"type":"listItem","content":[{"type":"paragraph","content":[{"type":"text","text":"One"}]}]},
+    {"type":"listItem","content":[{"type":"paragraph","content":[{"type":"text","text":"Two"}]},
+      {"type":"orderedList","attrs":{"start":3},"content":[{"type":"listItem","content":[{"type":"paragraph","content":[{"type":"text","text":"Nested"}]}]}]}]}
+  ]},
+  {"type":"codeBlock","attrs":{"language":"go"},"content":[{"type":"text","text":"fmt.Println(\"<hi>\")"}]},
+  {"type":"horizontalRule"},
+  {"type":"image","attrs":{"mediaId":7,"alt":"Bar chart","title":"Chart","align":"left","size":"medium","linkTarget":"custom","href":"/charts/","classes":"lead"}},
+  {"type":"image","attrs":{"src":"https://example.com/external.png","alt":"External","width":640,"height":480,"linkTarget":"none"}},
+  {"type":"figure","attrs":{"align":"center","classes":"callout"},"content":[
+    {"type":"image","attrs":{"mediaId":7,"alt":"Captioned","width":800,"height":450,"linkTarget":"media"}},
+    {"type":"figcaption","content":[{"type":"text","text":"A "},{"type":"text","text":"caption","marks":[{"type":"italic"}]}]}
+  ]},
+  {"type":"gallery","attrs":{"columns":3,"size":"thumbnail","link":"media"},"content":[
+    {"type":"image","attrs":{"mediaId":7,"alt":"One"}},
+    {"type":"image","attrs":{"src":"/portrait.jpg","alt":"Two","width":300,"height":600}}
+  ]},
+  {"type":"embed","attrs":{"provider":"youtube","url":"https://www.youtube.com/watch?v=XXXXXXXXXXX","externalId":"XXXXXXXXXXX","width":560,"height":315,"caption":"A video"}},
+  {"type":"embed","attrs":{"provider":"vimeo","url":"https://vimeo.com/123456","externalId":"123456"}},
+  {"type":"embed","attrs":{"provider":"spotify","url":"https://open.spotify.com/track/abc123XYZ?si=x"}},
+  {"type":"embed","attrs":{"provider":"soundcloud","url":"https://soundcloud.com/artist/track"}},
+  {"type":"embed","attrs":{"provider":"googlemaps","url":"https://www.google.com/maps/embed?pb=example"}},
+  {"type":"embed","attrs":{"provider":"x","url":"https://x.com/example/status/1"}},
+  {"type":"embed","attrs":{"provider":"instagram","url":"https://www.instagram.com/p/example/"}},
+  {"type":"video","attrs":{"mediaId":8,"posterMediaId":7,"controls":true,"autoplay":false,"loop":true,"muted":true}},
+  {"type":"table","content":[
+    {"type":"tableRow","content":[
+      {"type":"tableHeader","attrs":{"colspan":1,"rowspan":1,"colwidth":null},"content":[{"type":"paragraph","content":[{"type":"text","text":"Head"}]}]},
+      {"type":"tableHeader","content":[{"type":"paragraph","content":[{"type":"text","text":"Head 2"}]}]}
+    ]},
+    {"type":"tableRow","content":[
+      {"type":"tableCell","attrs":{"colspan":2,"colwidth":[120,0]},"content":[{"type":"paragraph","content":[{"type":"text","text":"Wide cell"}]}]}
+    ]}
+  ]},
+  {"type":"details","content":[
+    {"type":"detailsSummary","content":[{"type":"text","text":"More"}]},
+    {"type":"detailsContent","content":[{"type":"paragraph","content":[{"type":"text","text":"Hidden"}]}]}
+  ]},
+  {"type":"container","attrs":{"classes":"callout"},"content":[{"type":"paragraph","content":[{"type":"text","text":"Boxed"}]}]},
+  {"type":"rawHtml","attrs":{"html":"<div class=\"legacy\"><p>Legacy <b>markup</b></p><script>alert(1)</script></div>"}}
+]}

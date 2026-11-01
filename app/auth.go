@@ -200,7 +200,7 @@ func (h *authHandler) signin(c *echo.Context) error {
     return err
   }
   // imported users have no password until they accept an invite
-  if user.PasswordHash == nil {
+  if user.PasswordHash == nil || user.DisabledAt != nil {
     _ = bcrypt.CompareHashAndPassword(dummyHash, []byte(req.Password))
     return jsonError(c, http.StatusUnauthorized, "invalid credentials")
   }

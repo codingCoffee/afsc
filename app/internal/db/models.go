@@ -254,15 +254,16 @@ type Term struct {
 }
 
 type User struct {
-	ID           uuid.UUID `json:"id"`
-	Username     string    `json:"username"`
-	Email        string    `json:"email"`
-	PasswordHash *string   `json:"password_hash"`
-	FirstName    string    `json:"first_name"`
-	LastName     string    `json:"last_name"`
-	CreatedAt    time.Time `json:"created_at"`
-	UpdatedAt    time.Time `json:"updated_at"`
-	DisplayName  string    `json:"display_name"`
-	LegacyKey    *string   `json:"legacy_key"`
-	Role         string    `json:"role"`
+	ID           uuid.UUID  `json:"id"`
+	Username     string     `json:"username"`
+	Email        string     `json:"email"`
+	PasswordHash *string    `json:"password_hash"`
+	FirstName    string     `json:"first_name"`
+	LastName     string     `json:"last_name"`
+	CreatedAt    time.Time  `json:"created_at"`
+	UpdatedAt    time.Time  `json:"updated_at"`
+	DisplayName  string     `json:"display_name"`
+	LegacyKey    *string    `json:"legacy_key"`
+	Role         string     `json:"role"`
+	DisabledAt   *time.Time `json:"disabled_at"`
 }

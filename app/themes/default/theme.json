@@ -1,0 +1,8 @@
+{
+  "name": "default",
+  "version": "0.1.0",
+  "menu_locations": ["primary", "footer"],
+  "content": {
+    "allowed_classes": ["lead", "callout", "note", "warning", "has-small-font-size", "has-large-font-size"]
+  }
+}

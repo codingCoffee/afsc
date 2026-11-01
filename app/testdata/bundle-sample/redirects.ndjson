@@ -1,0 +1,4 @@
+{"legacy_key":"wp:redirect:1a2b","source":"/old-path/","match":"exact","target":"/example-post/","status":301,"note":"yoast-premium"}
+{"legacy_key":"wp:redirect:3c4d","source":"/archive/2015/","match":"prefix","target":"/","status":302,"note":""}
+{"legacy_key":"wp:redirect:5e6f","source":"^/topics/([a-z-]+)/?$","match":"regex","target":"/category/$1/","status":301,"note":"redirection plugin"}
+{"legacy_key":"wp:redirect:7a8b","source":"/deleted-post/","match":"exact","target":null,"status":410,"note":""}

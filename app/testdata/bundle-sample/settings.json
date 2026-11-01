@@ -1,0 +1,51 @@
+{
+  "site": {
+    "title": "Example Blog",
+    "tagline": "Just another example site",
+    "timezone": "Asia/Kolkata",
+    "date_format": "January 2, 2006",
+    "language": "en"
+  },
+  "permalinks": {
+    "post_pattern": "/{slug}/",
+    "category_base": "category",
+    "tag_base": "tag",
+    "author_base": "author",
+    "trailing_slash": "always",
+    "date_archives_enabled": true,
+    "author_archives_enabled": true
+  },
+  "reading": {
+    "home": null,
+    "posts_page": "wp:post:4",
+    "posts_per_page": 10,
+    "feed_items": 10,
+    "feed_excerpt_only": false
+  },
+  "seo": {
+    "separator": "|",
+    "title_templates": {
+      "post": "%%title%% %%sep%% %%sitename%%"
+    },
+    "description_templates": {
+      "category": "%%term_description%%"
+    },
+    "knowledge_graph": {
+      "type": "organization",
+      "name": "Example Org",
+      "logo_media": "wp:file:1f2e3d4c5b6a7980"
+    },
+    "social_profiles": [
+      "https://x.com/example"
+    ],
+    "twitter_site": "@example",
+    "default_image_media": "wp:post:456",
+    "tag_noindex": true,
+    "auto_description": false
+  },
+  "discussion": {
+    "comments_enabled": true,
+    "close_after_days": 0,
+    "thread_depth": 3
+  }
+}

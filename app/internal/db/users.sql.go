@@ -39,7 +39,7 @@ VALUES (
   $1, $2, $3, $4, $5,
   CASE WHEN EXISTS (SELECT 1 FROM users) THEN 'contributor' ELSE 'admin' END
 )
-RETURNING id, username, email, password_hash, first_name, last_name, created_at, updated_at, display_name, legacy_key, role
+RETURNING id, username, email, password_hash, first_name, last_name, created_at, updated_at, display_name, legacy_key, role, disabled_at
 `
 
 type CreateUserParams struct {
@@ -71,6 +71,7 @@ func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (User, e
 		&i.DisplayName,
 		&i.LegacyKey,
 		&i.Role,
+		&i.DisabledAt,
 	)
 	return i, err
 }
@@ -78,7 +79,7 @@ func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (User, e
 const createUserWithRole = `-- name: CreateUserWithRole :one
 INSERT INTO users (username, email, password_hash, first_name, last_name, role)
 VALUES ($1, $2, $3, $4, $5, $6)
-RETURNING id, username, email, password_hash, first_name, last_name, created_at, updated_at, display_name, legacy_key, role
+RETURNING id, username, email, password_hash, first_name, last_name, created_at, updated_at, display_name, legacy_key, role, disabled_at
 `
 
 type CreateUserWithRoleParams struct {
@@ -112,6 +113,7 @@ func (q *Queries) CreateUserWithRole(ctx context.Context, arg CreateUserWithRole
 		&i.DisplayName,
 		&i.LegacyKey,
 		&i.Role,
+		&i.DisabledAt,
 	)
 	return i, err
 }
@@ -129,7 +131,7 @@ func (q *Queries) DeleteUser(ctx context.Context, id uuid.UUID) (int64, error) {
 }
 
 const getUserByID = `-- name: GetUserByID :one
-SELECT id, username, email, password_hash, first_name, last_name, created_at, updated_at, display_name, legacy_key, role FROM users WHERE id = $1
+SELECT id, username, email, password_hash, first_name, last_name, created_at, updated_at, display_name, legacy_key, role, disabled_at FROM users WHERE id = $1
 `
 
 func (q *Queries) GetUserByID(ctx context.Context, id uuid.UUID) (User, error) {
@@ -147,12 +149,13 @@ func (q *Queries) GetUserByID(ctx context.Context, id uuid.UUID) (User, error) {
 		&i.DisplayName,
 		&i.LegacyKey,
 		&i.Role,
+		&i.DisabledAt,
 	)
 	return i, err
 }
 
 const getUserByLogin = `-- name: GetUserByLogin :one
-SELECT id, username, email, password_hash, first_name, last_name, created_at, updated_at, display_name, legacy_key, role FROM users WHERE username = $1 OR email = $1
+SELECT id, username, email, password_hash, first_name, last_name, created_at, updated_at, display_name, legacy_key, role, disabled_at FROM users WHERE username = $1 OR email = $1
 `
 
 func (q *Queries) GetUserByLogin(ctx context.Context, login string) (User, error) {
@@ -170,12 +173,13 @@ func (q *Queries) GetUserByLogin(ctx context.Context, login string) (User, error
 		&i.DisplayName,
 		&i.LegacyKey,
 		&i.Role,
+		&i.DisabledAt,
 	)
 	return i, err
 }
 
 const listUsers = `-- name: ListUsers :many
-SELECT id, username, email, password_hash, first_name, last_name, created_at, updated_at, display_name, legacy_key, role FROM users ORDER BY created_at ASC, id ASC LIMIT $2 OFFSET $1
+SELECT id, username, email, password_hash, first_name, last_name, created_at, updated_at, display_name, legacy_key, role, disabled_at FROM users ORDER BY created_at ASC, id ASC LIMIT $2 OFFSET $1
 `
 
 type ListUsersParams struct {
@@ -204,6 +208,7 @@ func (q *Queries) ListUsers(ctx context.Context, arg ListUsersParams) ([]User, e
 			&i.DisplayName,
 			&i.LegacyKey,
 			&i.Role,
+			&i.DisabledAt,
 		); err != nil {
 			return nil, err
 		}

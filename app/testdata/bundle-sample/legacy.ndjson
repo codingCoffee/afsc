@@ -1,0 +1,2 @@
+{"legacy_key":"wp:post:123","kind":"post","source":{"post_content":"<p>Original WordPress markup</p>","postmeta":{"_yoast_wpseo_focuskw":"example"}}}
+{"legacy_key":"wp:term:5","kind":"term","source":{"term_id":5,"taxonomy":"category"}}
