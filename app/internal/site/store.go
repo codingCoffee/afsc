@@ -28,7 +28,7 @@ const refCols = `p.id, coalesce(p.legacy_key, ''), p.type, p.slug, p.status, p.p
             WHERE pt.post_id = p.id AND t.taxonomy = 'category' ORDER BY pt.is_primary DESC, t.id LIMIT 1), 0)`
 
 const postCols = refCols + `, p.title, p.excerpt, p.content, p.content_html, p.content_text, coalesce(p.template, ''),
-  p.sticky, p.comment_status, p.updated_at, coalesce(p.feed_guid, ''), coalesce(p.featured_media_id, 0)`
+  p.sticky, p.comment_status, p.updated_at, coalesce(p.feed_guid, ''), coalesce(p.featured_media_id, 0), p.menu_order`
 
 const (
 	sqlExactRedirect = `
@@ -48,7 +48,9 @@ WHERE p.type = 'post' AND p.status = 'published' AND p.published_at <= now()
   AND ($2::bigint = 0 OR EXISTS (SELECT 1 FROM post_authors pa WHERE pa.post_id = p.id AND pa.author_id = $2))
   AND ($3::timestamptz IS NULL OR p.published_at >= $3)
   AND ($4::timestamptz IS NULL OR p.published_at < $4)
-ORDER BY CASE WHEN $5::bool THEN p.sticky END DESC NULLS LAST, p.published_at DESC, p.id DESC
+ORDER BY CASE WHEN $5::bool THEN p.sticky END DESC NULLS LAST,
+  CASE WHEN coalesce(cardinality($1::bigint[]), 0) > 0 THEN p.menu_order END ASC NULLS LAST,
+  p.published_at DESC, p.id DESC
 LIMIT $6 OFFSET $7`
 	sqlSearch = `
 WITH q AS (SELECT websearch_to_tsquery('english', $1) AS q),
@@ -152,7 +154,7 @@ func scanPost(rows pgx.Rows, extra ...any) (*postRow, error) {
 	var contentHTML string
 	dest := []any{&r.ID, &r.LegacyKey, &r.Type, &r.Slug, &r.Status, &r.PublishedAt, &r.ParentID, &r.CategoryID,
 		&v.Title, &v.Excerpt, &p.doc, &contentHTML, &v.ContentText, &v.Template,
-		&v.Sticky, &v.CommentStatus, &v.UpdatedAt, &v.FeedGUID, &p.mediaID}
+		&v.Sticky, &v.CommentStatus, &v.UpdatedAt, &v.FeedGUID, &p.mediaID, &v.MenuOrder}
 	if err := rows.Scan(append(dest, extra...)...); err != nil {
 		return nil, err
 	}

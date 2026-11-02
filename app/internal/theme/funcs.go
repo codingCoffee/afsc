@@ -28,25 +28,33 @@ func (t *Theme) funcMap(st *state) template.FuncMap {
 
 func (t *Theme) coreFuncs(st *state) template.FuncMap {
 	return template.FuncMap{
-		"head":          t.head(st),
-		"footer":        t.footer,
-		"body_class":    BodyClass,
-		"post_class":    PostClass,
-		"url":           t.url,
-		"asset":         st.assetURL,
-		"image":         st.image,
-		"image_url":     t.imageURL(st),
-		"avatar":        st.avatar,
-		"menu":          t.menu(st),
-		"pagination":    st.pagination,
-		"breadcrumbs":   st.breadcrumbs,
-		"excerpt":       st.excerpt,
-		"teaser_html":   teaserHTML,
-		"reading_time":  ReadingTime,
-		"date":          t.date,
-		"setting":       t.setting,
-		"theme_setting": t.themeSetting(st),
-		"t":             st.str,
+		"head":            t.head(st),
+		"footer":          t.footer,
+		"body_class":      BodyClass,
+		"post_class":      PostClass,
+		"url":             t.url,
+		"asset":           st.assetURL,
+		"image":           st.image,
+		"image_url":       t.imageURL(st),
+		"avatar":          st.avatar,
+		"menu":            t.menu(st),
+		"pagination":      st.pagination,
+		"breadcrumbs":     st.breadcrumbs,
+		"excerpt":         st.excerpt,
+		"teaser_html":     teaserHTML,
+		"reading_time":    ReadingTime,
+		"date":            t.date,
+		"setting":         t.setting,
+		"theme_setting":   t.themeSetting(st),
+		"t":               st.str,
+		"term_posts":      t.termPosts,
+		"terms":           t.terms,
+		"term_children":   t.termChildren,
+		"recent_comments": t.recentComments,
+		"theme_data":      st.themeData,
+		"truncate":        truncate,
+		"strip_tags":      stripTags,
+		"reverse":         reverse,
 	}
 }
 
@@ -214,6 +222,11 @@ func (st *state) avatar(v any, size string) (template.HTML, error) {
 		}
 		name, m = x.Name, x.Avatar
 	case *Comment:
+		if x == nil {
+			return "", nil
+		}
+		name = x.AuthorName
+	case *RecentComment:
 		if x == nil {
 			return "", nil
 		}
