@@ -65,3 +65,17 @@ func TestAFSCMatchesWP(t *testing.T) {
 		t.Errorf("afsc %s != wp %s", got, want)
 	}
 }
+
+func TestWPCustomTypesAndTaxonomies(t *testing.T) {
+	w := &WP{Structure: "/%postname%/", TypeStructures: map[string]string{"chapter": "/chapter/%postname%/"},
+		TaxonomyBases: map[string]string{"modules": "module"}}
+	if got := w.Post(WPPost{ID: 1, Slug: "intro", Type: "chapter"}); got != "/chapter/intro/" {
+		t.Errorf("chapter: %q", got)
+	}
+	if got := w.Post(WPPost{ID: 2, Slug: "news", Type: "post"}); got != "/news/" {
+		t.Errorf("post: %q", got)
+	}
+	if got := w.Term("modules", "options-theory"); got != "/module/options-theory/" {
+		t.Errorf("modules: %q", got)
+	}
+}

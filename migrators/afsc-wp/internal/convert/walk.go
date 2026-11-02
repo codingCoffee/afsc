@@ -472,6 +472,16 @@ func (w *walker) list(n *html.Node) []*content.Node {
 	for c := n.FirstChild; c != nil; c = c.NextSibling {
 		if c.Type == html.ElementNode && c.Data == "li" {
 			flushStray()
+			if inner := markerlessWrapper(c); inner != nil {
+				// TinyMCE indents a list by wrapping it in <li style="list-style-type: none">. AFSC drops that
+				// style, which would show an extra marker, so the nested items join this list instead.
+				for _, l := range inner {
+					for _, ln := range w.list(l) {
+						list.Content = append(list.Content, ln.Content...)
+					}
+				}
+				continue
+			}
 			if hasAttr(c, "value") {
 				w.flag("attr_dropped", "li value")
 			}
@@ -656,4 +666,25 @@ func truncate(s string, n int) string {
 		return s[:n] + "…"
 	}
 	return s
+}
+
+// markerlessWrapper returns the lists inside an <li> styled list-style-type: none whose only content is lists,
+// or nil.
+func markerlessWrapper(li *html.Node) []*html.Node {
+	st := strings.ToLower(strings.ReplaceAll(attr(li, "style"), " ", ""))
+	if !strings.Contains(st, "list-style-type:none") && !strings.Contains(st, "list-style:none") {
+		return nil
+	}
+	var lists []*html.Node
+	for c := li.FirstChild; c != nil; c = c.NextSibling {
+		switch {
+		case c.Type == html.ElementNode && (c.Data == "ol" || c.Data == "ul"):
+			lists = append(lists, c)
+		case c.Type == html.TextNode && strings.TrimSpace(c.Data) == "":
+		case c.Type == html.CommentNode:
+		default:
+			return nil
+		}
+	}
+	return lists
 }

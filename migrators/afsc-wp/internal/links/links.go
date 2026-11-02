@@ -12,6 +12,10 @@ type Rewriter struct {
 	Hosts   map[string]bool
 	Resolve func(param string, id int64) (string, bool) // p, page_id, attachment_id, cat, tag_id, author
 	PathMap map[string]string                           // decoded old path → new path
+	// HomePath is the site's path under its host ("/varsity"), or "". Internal links under it lose the prefix;
+	// links elsewhere on the host belong to another site and are made absolute with Origin.
+	HomePath string
+	Origin   string // "https://zerodha.com"
 	// Changed records every href that was rewritten, so verification can apply the same mapping.
 	Changed map[string]string
 }
@@ -56,6 +60,25 @@ func (r *Rewriter) rewrite(href string) (string, bool) {
 		}
 	} else if !strings.HasPrefix(u.Path, "/") {
 		return h, true
+	}
+	if r.HomePath != "" {
+		ep := u.EscapedPath()
+		switch {
+		case ep == r.HomePath || strings.HasPrefix(ep, r.HomePath+"/"):
+			rest := strings.TrimPrefix(ep, r.HomePath)
+			if rest == "" {
+				rest = "/"
+			}
+			nu, err := url.Parse(rest)
+			if err != nil {
+				return h, true
+			}
+			u.Path, u.RawPath = nu.Path, nu.RawPath
+		case u.Host != "":
+			return h, true
+		default:
+			return r.Origin + h, true
+		}
 	}
 	frag := ""
 	if u.Fragment != "" {

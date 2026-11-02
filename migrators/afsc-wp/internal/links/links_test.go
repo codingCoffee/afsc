@@ -46,3 +46,26 @@ func TestRewrite(t *testing.T) {
 		}
 	}
 }
+
+func TestRewriteHomePath(t *testing.T) {
+	r := &Rewriter{
+		Hosts:    map[string]bool{"zerodha.com": true},
+		Resolve:  func(string, int64) (string, bool) { return "", false },
+		PathMap:  map[string]string{"/old/": "/chapter/old/"},
+		HomePath: "/varsity",
+		Origin:   "https://zerodha.com",
+	}
+	cases := []struct{ in, want string }{
+		{"https://zerodha.com/varsity/chapter/x/", "/chapter/x/"},
+		{"https://zerodha.com/varsity", "/"},
+		{"/varsity/old/#c", "/chapter/old/#c"},
+		{"https://zerodha.com/charges/", "https://zerodha.com/charges/"},
+		{"/z-connect/post/", "https://zerodha.com/z-connect/post/"},
+		{"https://zerodha.com/varsityx/", "https://zerodha.com/varsityx/"},
+	}
+	for _, c := range cases {
+		if got, ok := r.Rewrite(c.in); !ok || got != c.want {
+			t.Errorf("Rewrite(%q) = %q, %v; want %q", c.in, got, ok, c.want)
+		}
+	}
+}

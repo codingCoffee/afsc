@@ -29,6 +29,7 @@ type Ref struct {
 type Options struct {
 	Source      string
 	UploadsPath string   // "/wp-content/uploads"
+	HomePath    string   // site path stripped from served legacy paths ("/varsity"); content URLs keep it
 	SiteHosts   []string // every host that serves this site
 	CDNHosts    []string // Jetpack Photon hosts
 	Loc         *time.Location
@@ -97,7 +98,7 @@ func Build(ds *extract.Dataset, o Options) (*Index, []*records.Media, *Report) {
 		if _, ok := ix.byRel[rel]; !ok {
 			ix.byRel[rel] = ref
 		}
-		lp.Path = o.UploadsPath + "/" + rel
+		lp.Path = strings.TrimPrefix(o.UploadsPath, o.HomePath) + "/" + rel
 		if strings.ContainsAny(lp.Path, badPathChars) || strings.Contains(lp.Path, "..") {
 			rep.Unservable = append(rep.Unservable, lp.Path)
 			return

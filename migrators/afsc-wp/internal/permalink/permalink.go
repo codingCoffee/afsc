@@ -59,6 +59,7 @@ type WPPost struct {
 	Local    time.Time // post_date in the site timezone
 	Category string    // raw slug path of the permalink category, "" when none
 	Author   string    // user_nicename
+	Type     string    // post type; a TypeStructures entry overrides Structure
 }
 
 // WP builds today's WordPress URLs.
@@ -66,6 +67,10 @@ type WP struct {
 	Structure    string
 	CategoryBase string
 	TagBase      string
+	// TypeStructures are custom post types' permalinks ("chapter": "/chapter/%postname%/").
+	TypeStructures map[string]string
+	// TaxonomyBases are custom taxonomies' archive bases ("modules": "module").
+	TaxonomyBases map[string]string
 }
 
 func (w *WP) slash(p string) string {
@@ -80,7 +85,11 @@ func (w *WP) slash(p string) string {
 
 // Post returns the WordPress path of a published post, or /?p=N for plain permalinks.
 func (w *WP) Post(p WPPost) string {
-	if strings.TrimSpace(w.Structure) == "" {
+	structure := w.Structure
+	if ts := w.TypeStructures[p.Type]; ts != "" {
+		structure = ts
+	}
+	if strings.TrimSpace(structure) == "" {
 		return "/?p=" + strconv.FormatInt(p.ID, 10)
 	}
 	cat := p.Category
@@ -93,7 +102,7 @@ func (w *WP) Post(p WPPost) string {
 		"%minute%", fmt.Sprintf("%02d", p.Local.Minute()), "%second%", fmt.Sprintf("%02d", p.Local.Second()),
 		"%postname%", p.Slug, "%post_id%", strconv.FormatInt(p.ID, 10), "%category%", cat, "%author%", p.Author,
 	)
-	out := r.Replace(w.Structure)
+	out := r.Replace(structure)
 	if !strings.HasPrefix(out, "/") {
 		out = "/" + out
 	}
@@ -118,6 +127,9 @@ func base(b, def string) string {
 
 // Term returns the WordPress archive path of a category or tag.
 func (w *WP) Term(taxonomy, rawPath string) string {
+	if b := w.TaxonomyBases[taxonomy]; b != "" {
+		return w.slash("/" + strings.Trim(b, "/") + "/" + rawPath + "/")
+	}
 	if taxonomy == "category" {
 		return w.slash("/" + base(w.CategoryBase, "category") + "/" + rawPath + "/")
 	}

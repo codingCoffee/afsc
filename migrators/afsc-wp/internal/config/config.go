@@ -34,6 +34,23 @@ type Site struct {
 	RobotsTxtFile string            `json:"robots_txt_file"`
 	IndexNowKey   string            `json:"indexnow_key"`
 	PageTemplates map[string]string `json:"page_templates"`
+	// PostTypes gives custom post types their WordPress permalink (e.g. "/chapter/%postname%/"),
+	// relative to the site's home path. Unlisted types use permalink_structure.
+	PostTypes map[string]PostType `json:"post_types"`
+	// TaxonomyBases gives custom taxonomies their WordPress archive base (e.g. "modules": "module").
+	TaxonomyBases map[string]string `json:"taxonomy_bases"`
+	// Permalinks overrides the AFSC permalinks derived from WordPress. Empty fields keep the derived value.
+	Permalinks Permalinks `json:"permalinks"`
+}
+
+type PostType struct {
+	WPPath        string `json:"wp_path"`
+	MenuOrderMeta string `json:"menu_order_meta"` // numeric post meta copied into menu_order
+}
+
+type Permalinks struct {
+	PostPattern  string `json:"post_pattern"`
+	CategoryBase string `json:"category_base"`
 }
 
 type Filter struct {
@@ -246,6 +263,19 @@ func (c *Config) DSN() (string, error) {
 		return v, nil
 	}
 	return "", fmt.Errorf("no MySQL DSN: set %s or mysql.dsn", c.MySQL.DSNEnv)
+}
+
+// HomePath is the path of site.base_url without a trailing slash ("/varsity"), or "" at the root.
+// WordPress paths are handled relative to it, the way AFSC sees requests behind a prefix-stripping proxy.
+func (c *Config) HomePath() string {
+	u, _ := url.Parse(c.Site.BaseURL)
+	return strings.TrimRight(u.Path, "/")
+}
+
+// Origin is scheme://host of site.base_url.
+func (c *Config) Origin() string {
+	u, _ := url.Parse(c.Site.BaseURL)
+	return u.Scheme + "://" + u.Host
 }
 
 // Host is the public host of site.base_url.

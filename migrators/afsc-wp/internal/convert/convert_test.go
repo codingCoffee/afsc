@@ -247,3 +247,10 @@ func TestEmbedFromURL(t *testing.T) {
 		}
 	}
 }
+
+func TestMarkerlessListWrapper(t *testing.T) {
+	got, _ := run(t, `<ol><li style="list-style-type: none;"><ol><li>a</li><li>b</li></ol></li><li>c</li></ol>`, nil)
+	if strings.Count(got, `"type":"listItem"`) != 3 || strings.Count(got, `"type":"orderedList"`) != 1 {
+		t.Errorf("want one ordered list with 3 items, got %s", got)
+	}
+}
