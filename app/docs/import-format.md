@@ -41,11 +41,11 @@ Environment: `AFSC_DATABASE_URL`, and unless `--dry-run`, `AFSC_S3_BUCKET`, `AFS
   existing AFSC account is linked to that account instead; its role and password are kept. A re-import never changes a
   user's role.
 
-### Not done yet
+### Jobs after import
 
-§17 asks the importer to enqueue `content.rerender_all`, `search.reindex`, `related.compute` and `spam.retrain` after
-an import. None of these jobs exist yet. Content HTML and the search vector are already up to date after import, so
-nothing is lost; the hooks will be added with the job queue.
+Every successful non-dry-run import enqueues `spam.retrain` (labelled imported comments seed the classifier) and each
+compiled-in plugin's import job, currently `related.compute_all`. `afsc worker` runs them. Content HTML and the search
+vector are written during import, so `content.rerender_all` and `search.reindex` aren't needed.
 
 The page cache *is* purged. After any import that may have written rows (every run except `--dry-run` and one that
 failed validation), `afsc import` sends `NOTIFY afsc_cache`. Every running `afsc serve` then reloads its site data
