@@ -3,11 +3,21 @@ package site
 import (
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
+	"afsc/internal/metrics"
 	"afsc/internal/pagecache"
 	"afsc/internal/theme"
 )
+
+// CacheStats is the in-process page cache's entry count and size; zero when the cache is off.
+func (st *Site) CacheStats() (entries int, bytes int64) {
+	if st.cache == nil {
+		return 0, 0
+	}
+	return st.cache.Stats()
+}
 
 // cacheableKinds are the page kinds stored in the page cache and sent with public cache headers (§6.3).
 var cacheableKinds = map[string]bool{
@@ -77,6 +87,7 @@ func writeEntry(w http.ResponseWriter, r *http.Request, e *pagecache.Entry, ttl 
 	h.Set("Cache-Control", pagecache.CacheControl(ttl))
 	h.Set("ETag", e.ETag)
 	h.Set("X-Cache", status)
+	metrics.PageCache.Add(strings.ToLower(status), 1)
 	if age := int(time.Since(e.Stored).Seconds()); status == "HIT" && age > 0 {
 		h.Set("Age", strconv.Itoa(age))
 	}

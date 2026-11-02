@@ -77,6 +77,11 @@ async function open(d: WebhookDelivery) {
   }
 }
 
+function sheetOpen(v: boolean) {
+  if (!v)
+    detail.value = null
+}
+
 async function redeliver(d: WebhookDelivery) {
   try {
     await authFetch(`${base}/deliveries/${d.id}/redeliver`, { method: 'POST' })
@@ -180,7 +185,7 @@ const labelClass = 'font-mono text-[11px] tracking-widest text-muted-foreground 
     </div>
     <PagePagination v-if="data" v-model:page="page" :total="data.total" :page-size="data.page_size" />
 
-    <Sheet :open="!!detail" @update:open="(v: boolean) => { if (!v) detail = null }">
+    <Sheet :open="!!detail" @update:open="sheetOpen">
       <SheetContent class="w-full overflow-y-auto sm:max-w-lg">
         <SheetHeader>
           <SheetTitle class="font-mono">

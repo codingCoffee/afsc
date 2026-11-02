@@ -2,7 +2,9 @@ package theme
 
 import (
 	"errors"
+	"fmt"
 	"io"
+	"strings"
 
 	"afsc/internal/content"
 )
@@ -32,6 +34,10 @@ func Check(dir string, prepare func(*Theme, *PageData), extra ...Options) ([]Che
 	st, _ := t.current()
 
 	var out []CheckResult
+	if len(st.missing) > 0 {
+		out = append(out, CheckResult{Template: "templates", Fixture: "plugin funcs",
+			Err: fmt.Errorf("no compiled-in plugin provides %s", strings.Join(st.missing, ", "))})
+	}
 	for _, name := range t.Templates() {
 		kinds := FixtureKinds(name)
 		if kinds == nil {

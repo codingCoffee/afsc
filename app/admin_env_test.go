@@ -98,7 +98,7 @@ func newAdminEnv(t *testing.T) *adminEnv {
 			`DELETE FROM users WHERE username LIKE '%-` + env.suffix + `'`,
 			`DELETE FROM login_failures WHERE key LIKE '%` + env.suffix + `%'`,
 			`DELETE FROM login_lockouts WHERE key LIKE '%` + env.suffix + `%'`,
-			`DELETE FROM jobs WHERE kind = 'plugins.action' AND payload->>'plugin' IN ('testadmin', 'webhooks')`,
+			`DELETE FROM jobs WHERE kind = 'plugins.action' AND payload->>'plugin' IN ('testadmin', 'webhooks', 'related')`,
 		} {
 			if _, err := pool.Exec(ctx, sql); err != nil {
 				t.Error(err)

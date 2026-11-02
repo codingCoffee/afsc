@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log"
 	"os"
 	"time"
 
@@ -11,10 +12,12 @@ import (
 	"github.com/urfave/cli/v3"
 
 	"afsc/internal/content"
+	"afsc/internal/plugins"
 	"afsc/internal/seo"
 	"afsc/internal/settings"
 	"afsc/internal/site"
 	"afsc/internal/theme"
+	registry "afsc/plugins"
 )
 
 func themeCmd() *cli.Command {
@@ -39,14 +42,7 @@ func runThemeCheck(ctx context.Context, cmd *cli.Command) error {
 		return cli.Exit("usage: afsc theme check <theme dir>", 2)
 	}
 	defaults := settings.Defaults()
-	defaults.Site.Title, defaults.Site.Tagline = "Example Blog", "Just another example site"
-	rt, err := buildPlugins(ctx, nil, "https://blog.example.com", nil)
-	if err != nil {
-		return cli.Exit(fmt.Sprintf("FAIL plugins: %v", err), 1)
-	}
-	results, err := theme.Check(dir, func(t *theme.Theme, d *theme.PageData) {
-		d.Head, _ = seo.Build(seo.Input{Page: d, Settings: &defaults, Crumbs: t.Breadcrumbs(d), Now: time.Now()})
-	}, themeOptions(rt))
+	rt, results, err := checkTheme(ctx, dir, &defaults)
 	if err != nil {
 		return cli.Exit(fmt.Sprintf("FAIL %s: %v", dir, err), 1)
 	}
@@ -97,4 +93,30 @@ func runThemeCheck(ctx context.Context, cmd *cli.Command) error {
 		}
 	}
 	return nil
+}
+
+// checkTheme renders every template against fixtures with every compiled-in plugin, which returns sample data, and
+// validates theme.json "plugins". defaults gets the fixture site title.
+func checkTheme(ctx context.Context, dir string, defaults *settings.All) (*plugins.Runtime, []theme.CheckResult, error) {
+	defaults.Site.Title, defaults.Site.Tagline = "Example Blog", "Just another example site"
+	m, err := theme.LoadManifest(dir)
+	if err != nil {
+		return nil, nil, err
+	}
+	rt, err := plugins.Build(ctx, plugins.Config{BaseURL: "https://blog.example.com", Logf: log.Printf, Fixtures: true},
+		registry.All())
+	if err != nil {
+		return nil, nil, fmt.Errorf("plugins: %w", err)
+	}
+	rt.BindBackend(plugins.StaticBackend{Manifest: m})
+	results, err := theme.Check(dir, func(t *theme.Theme, d *theme.PageData) {
+		d.Head, _ = seo.Build(seo.Input{Page: d, Settings: defaults, Crumbs: t.Breadcrumbs(d), Now: time.Now()})
+	}, themeOptions(rt))
+	if err != nil {
+		return nil, nil, err
+	}
+	if err := rt.CheckThemeConfig(m.Plugins); err != nil {
+		results = append(results, theme.CheckResult{Template: "theme.json", Fixture: "plugins", Err: err})
+	}
+	return rt, results, nil
 }

@@ -15,6 +15,8 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+
+	"afsc/internal/metrics"
 )
 
 // Handler runs one job. A returned error (or a panic) schedules a retry until max_attempts is reached.
@@ -147,11 +149,14 @@ func (w *Worker) runOnce(ctx context.Context) (bool, error) {
 	defer cancel()
 	switch {
 	case runErr == nil:
+		metrics.Jobs.Add(kind+".ok", 1)
 		_, err = w.DB.Exec(rctx, `UPDATE jobs SET done_at = now(), locked_at = NULL, last_error = NULL WHERE id = $1`, id)
 	case attempts >= maxAttempts:
+		metrics.Jobs.Add(kind+".failed", 1)
 		w.Logf("jobs: %s #%d failed for good after %d attempts: %v", kind, id, attempts, runErr)
 		_, err = w.DB.Exec(rctx, `UPDATE jobs SET done_at = now(), locked_at = NULL, last_error = $2 WHERE id = $1`, id, runErr.Error())
 	default:
+		metrics.Jobs.Add(kind+".retry", 1)
 		backoff := w.Backoff
 		if b := w.backoffs[kind]; b != nil {
 			backoff = b

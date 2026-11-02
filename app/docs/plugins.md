@@ -16,6 +16,7 @@ under **Admin → Settings → Plugins**.
 - [Public routes and assets](#public-routes-and-assets)
 - [Admin API routes](#admin-api-routes)
 - [Jobs and schedules](#jobs-and-schedules)
+- [Theme config](#theme-config)
 - [Migrations](#migrations)
 - [Testing a plugin](#testing-a-plugin)
 - [Example: reading progress bar](#example-reading-progress-bar)
@@ -84,6 +85,10 @@ Switching a plugin on or off is a settings save, which purges the whole page cac
 | `plugins.AddAllActions(h, prio, fn)` | Subscribe to every event, with `Data` as raw JSON. |
 | `h.Key()` | A 32-byte key for this plugin, derived from `AFSC_JWT_SECRET` (HKDF, info `afsc-<id>`). |
 | `h.RegisterMigrations(fs.FS)` | golang-migrate files for `plg_<id>_…` tables. |
+| `h.RegisterThemeConfig(check)` / `h.ThemeConfig()` | Let themes configure the plugin in theme.json `"plugins": {"<id>": {…}}`; see [Theme config](#theme-config). |
+| `h.RegisterImportJob(kind)` | Queue one of your job kinds after every successful `afsc import`. |
+| `h.Backend()` | Site data: `Posts(ctx, ids)` (published, hydrated like listing cards, in the order given), `PurgePosts(ctx, ids)` and `ThemeManifest()`. |
+| `h.Fixtures()` | True in `afsc theme check`: template funcs should return sample data so the theme's partials render. |
 | `h.DB()`, `h.BaseURL()`, `h.Logf()` | The pool (nil in theme check, import and migrate), `AFSC_PUBLIC_BASE_URL`, and a logger prefixed with the ID. |
 | `h.Enabled()`, `h.Settings()`, `h.Bool/String/Number(key)` | Current state and options. |
 
@@ -269,6 +274,19 @@ h.RegisterSchedule(jobs.Schedule{Kind: "progress.cleanup", Every: 24 * time.Hour
   make them idempotent. Enqueue with `jobs.Enqueue(ctx, tx, kind, payload, runAt)`, inside your transaction when the
   job belongs to a change.
 
+## Theme config
+
+A plugin that themes opt into (the lightbox, for example) registers a validator:
+
+```go
+h.RegisterThemeConfig(func(raw json.RawMessage) error { _, err := parse(raw); return err })
+```
+
+The theme then writes `"plugins": {"lightbox": {"selector": ".entry-content"}}` in theme.json, and the plugin reads
+it with `h.ThemeConfig()` (nil when the theme doesn't mention it). `afsc theme check` fails on a key that isn't a
+compiled-in plugin with a theme config, and on a value the plugin rejects. `afsc serve` logs the same problems as
+warnings instead of refusing to start.
+
 ## Migrations
 
 ```go
@@ -372,7 +390,40 @@ The full source is in `plugins/progress/`, and its tests in `progress_test.go`.
 |---|---|---|
 | `spam` | The [comment.check](#commentcheck) pipeline | always on |
 | `webhooks` | Signed POSTs on every event; see [webhooks.md](webhooks.md) | on |
+| `related` | Related posts for themes (`plg_related_posts`) | on |
+| `share` | Share links for themes (`plg_share_links`) | on |
+| `lightbox` | Image viewer for themes that opt in | on |
 | `progress` | The example above | off |
 
-Later steps of M5 add `related`, `share` and `lightbox`. `seo` and `indexnow` are
-core packages, not plugins; they run the `seo.*` and `sitemap.entries` filters.
+`seo` and `indexnow` are core packages, not plugins; they run the `seo.*` and `sitemap.entries` filters. The theme
+side of `related`, `share` and `lightbox` is in [themes.md](themes.md#built-in-plugin-funcs).
+
+### related
+
+- Table `plg_related_items(post_id, related_id, score)` holds the top 10 for every published post.
+- Score: 3 per shared category, 1 per shared tag, plus `ts_rank` of the candidate's search vector against an OR of
+  the post's title words (title hits weigh most). Candidates are published posts (not pages) from the last `years`
+  years that share a term or a title word. Ties go to the newer id.
+- `related.compute {post_id}` runs when a post is published or saved while published (one queued job per post at a
+  time). It replaces the post's list in one transaction and purges the post's page if the order changed.
+- `related.compute_all` runs daily and after `afsc import`, 200 posts per job with a continuation job. It drops
+  rows of posts that are no longer published, and purges every post whose list changed (over 200 purges everything).
+- Settings: `years` (1–20, default 3) and `count` (1–10, default 3). A new `years` applies at the next nightly run.
+- Staleness: a related post's new title, image or URL shows on other posts' pages within one page-cache TTL; a
+  newly published post appears in older posts' lists after the nightly run. A related post that's unpublished
+  disappears at once (the read query filters on status).
+
+### share
+
+No settings, no requests, no table. Networks, in this fixed order: `x`, `linkedin`, `facebook`, `whatsapp`,
+`telegram`, `email`. URLs are built with percent-encoding (`%20` for spaces, which `mailto:` needs).
+
+### lightbox
+
+Assets `lightbox.css` and `lightbox.js` (about 180 lines, no dependencies), loaded with `defer` on `single`, `page`
+and `front_page` views of themes that set `"plugins": {"lightbox": {"selector": "…"}}`. The labels come from theme
+strings `lightbox.viewer`, `lightbox.close`, `lightbox.prev`, `lightbox.next`, `lightbox.open` and
+`lightbox.counter` (`{n} of {total}`), passed in `data-` attributes, so there's no inline script. CSP and cache:
+the assets are same-origin and immutable, and images come from `/m/`, so the policy doesn't change; toggling the
+plugin or editing theme.json purges every page already. `plugins/lightbox/testdata/harness.html` is a static page for
+the browser checklist in [themes.md](themes.md#lightbox-accessibility-checklist).

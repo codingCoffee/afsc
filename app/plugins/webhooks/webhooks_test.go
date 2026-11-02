@@ -216,7 +216,7 @@ func TestDeliver(t *testing.T) {
 	}
 	st, n, _, snippet := e.state(d)
 	if st != "succeeded" || n != 3 || snippet == nil || len(*snippet) != snippetBytes {
-		t.Errorf("after 200: %s %d snippet %d", st, n, len(*snippet))
+		t.Errorf("after 200: %s %d snippet %v", st, n, snippet)
 	}
 	if err := e.run(d); err != nil || len(e.reqs) != 3 {
 		t.Errorf("a finished delivery was sent again: %v, %d requests", err, len(e.reqs))

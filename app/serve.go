@@ -51,6 +51,7 @@ func serveCmd() *cli.Command {
 }
 
 func serve(ctx context.Context, cmd *cli.Command) error {
+	setupLogging(os.Getenv("AFSC_ENV") == "dev")
 	if cmd.Bool("migrate") {
 		if err := runAllMigrations(ctx); err != nil {
 			return fmt.Errorf("migrate up: %w", err)
@@ -125,11 +126,27 @@ func serve(ctx context.Context, cmd *cli.Command) error {
 	if err != nil {
 		return err
 	}
+	sets, err := migrationSets(rt)
+	if err != nil {
+		return err
+	}
+	if err := requireMigrations(ctx, pool, sets); err != nil {
+		return err
+	}
 	pub, err := site.New(ctx, site.Config{Pool: pool, BaseURL: baseURL, ThemeDir: themeDir, Dev: dev, Logf: log.Printf,
 		Storage: store, Imgproxy: imgproxy.New(ipcfg), CacheBytes: int64(cacheMB) << 20, PreviewKey: previewKey,
 		CommentSigner: commentSigner, Plugins: rt})
 	if err != nil {
 		return err
+	}
+	addr := net.JoinHostPort(cmd.String("api-host"), strconv.Itoa(cmd.Int("api-port")))
+	if m := os.Getenv("AFSC_METRICS_ADDR"); m != "" {
+		if m == addr || strings.HasSuffix(m, ":"+strconv.Itoa(cmd.Int("api-port"))) {
+			return errors.New("AFSC_METRICS_ADDR must not be the public port")
+		}
+		if _, err := serveMetrics(ctx, m, pool, pub); err != nil {
+			return err
+		}
 	}
 	siteCtx, stopSite := context.WithCancel(ctx)
 	siteDone := make(chan struct{})
@@ -169,8 +186,12 @@ func serve(ctx context.Context, cmd *cli.Command) error {
 
 	e := echo.New()
 
-	e.Use(middleware.RequestLogger())
 	e.Use(middleware.Recover())
+	ready := readyz(pool, sets)
+	e.GET("/healthz", healthz)
+	e.HEAD("/healthz", healthz)
+	e.GET("/readyz", ready)
+	e.HEAD("/readyz", ready)
 
 	if fsys != nil {
 		csp, err := adminCSP(fsys)
@@ -227,12 +248,7 @@ func serve(ctx context.Context, cmd *cli.Command) error {
 		plugins: rt},
 		clientIPMiddleware(trusted), adminHeaders(apiCSP))
 
-	addr := net.JoinHostPort(cmd.String("api-host"), strconv.Itoa(cmd.Int("api-port")))
-	sc := echo.StartConfig{Address: addr}
-	if err := sc.Start(ctx, e); err != nil && !errors.Is(err, http.ErrServerClosed) {
-		return err
-	}
-	return nil
+	return listen(ctx, addr, withRequestLog(e))
 }
 
 // publicBaseURL reads AFSC_PUBLIC_BASE_URL, the origin used for absolute URLs. The Host header is never trusted.

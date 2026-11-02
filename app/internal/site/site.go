@@ -86,6 +86,15 @@ func New(ctx context.Context, cfg Config) (*Site, error) {
 	if st.theme, err = theme.Load(cfg.ThemeDir, opts); err != nil {
 		return nil, fmt.Errorf("load theme %s: %w", cfg.ThemeDir, err)
 	}
+	if cfg.Plugins != nil {
+		cfg.Plugins.BindBackend(st)
+		if err := cfg.Plugins.CheckThemeConfig(st.theme.Manifest().Plugins); err != nil {
+			cfg.Logf("warning: theme %s: %v", cfg.ThemeDir, err)
+		}
+		if m := st.theme.MissingFuncs(); len(m) > 0 {
+			cfg.Logf("warning: theme %s calls plugin funcs no plugin provides (they render nothing): %v", cfg.ThemeDir, m)
+		}
+	}
 	if cfg.Storage != nil && cfg.Imgproxy != nil {
 		st.media = media.New(media.Config{Store: &media.PG{DB: cfg.Pool}, Storage: cfg.Storage, Imgproxy: cfg.Imgproxy,
 			Images: func() *content.ImageSizes { return st.theme.Manifest().Images() }, Logf: cfg.Logf})

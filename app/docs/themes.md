@@ -40,7 +40,8 @@ Unknown fields are errors.
   "settings": {"show_reading_time": {"type": "bool", "label": "Show reading time", "default": true},
                "layout": {"type": "select", "label": "Layout", "default": "wide", "options": ["wide", "narrow"]}},
   "strings": {"read_more": "Continue reading"},
-  "posts_per_page": {"home": 5, "category": 12}
+  "posts_per_page": {"home": 5, "category": 12},
+  "plugins": {"lightbox": {"selector": ".entry-content"}}
 }
 ```
 
@@ -56,6 +57,7 @@ Unknown fields are errors.
 | `settings` | Theme options: `type` (`bool`, `string`, `number`, `select` with `options`, or `color` as `#rrggbb`), `label` and a `default` of that type. Admins edit them under Settings → Theme; `theme_setting` returns the admin's value, else the default. |
 | `strings` | Static strings for `t`. They override the built-in defaults listed under `t`. |
 | `posts_per_page` | Per-archive overrides of the site's posts-per-page: `home` (also the posts page), `category`, `tag`, `author`, `date`, `search`. 1–100. |
+| `plugins` | Per-plugin theme config, keyed by plugin ID, each an object the plugin validates. The only built-in one is `lightbox` (see [Lightbox](#lightbox)). Unknown IDs fail `afsc theme check`. |
 
 ## Layout: base.html and blocks
 
@@ -491,13 +493,84 @@ undeclared size is an error.
 
 `avatar comment "size"` gives the initials SVG for a commenter. Commenters never get an image (no Gravatar).
 
-Not yet available: `related_posts` and `share_links` arrive with M5.
-
 ### Plugin funcs
 
 Plugins add funcs named `plg_<plugin id>_<name>`, for example `{{ plg_progress_bar . }}`. They're always defined,
-so a theme parses whether the plugin is on or off; while it's off they return nothing. `afsc theme check` knows
-every compiled-in plugin's funcs. See `docs/plugins.md` for the built-in ones.
+so a theme parses whether the plugin is on or off; while it's off they return nothing. A `plg_` func that no
+compiled-in plugin provides (a typo, or a plugin removed from the build) also parses and returns nothing, but
+`afsc theme check` fails on it and `afsc serve` logs a warning. The build plan's `related_posts` and `share_links`
+are these two:
+
+### Built-in plugin funcs
+
+**`plg_related_posts .Post [n]`** returns up to `n` related posts (default: the plugin's `count` setting, at most 10)
+as `[]*Post`, hydrated like listing cards: `URL`, `Title`, `PublishedAt`, `FeaturedMedia`, `Primary`, `Categories`,
+`Tags`, `Authors`. It's empty for pages, before the post's first compute, and while the plugin is off. In
+`afsc theme check` it returns the fixture's other posts.
+
+```html
+{{- with plg_related_posts .Post}}
+<section class="related-posts">
+  <h2>{{t "related_posts"}}</h2>
+  <ul>{{range .}}<li><a href="{{url .}}">{{.Title}}</a></li>{{end}}</ul>
+</section>
+{{- end}}
+```
+
+**`plg_share_links .Post ["x" "linkedin" …]`** returns `[]{Network, Label, URL}` for `x`, `linkedin`, `facebook`,
+`whatsapp`, `telegram` and `email`, always in that order. Name networks to keep only those; an unknown name is an
+error that `afsc theme check` reports. `URL` is a plain string, so `href="{{.URL}}"` escapes it (`mailto:` is
+allowed). Nothing is fetched from those sites: draw icons in the theme (the default theme's
+`parts/share-icon.html` has inline SVGs) and add `rel="noopener noreferrer nofollow"`.
+
+Both are deterministic per URL, so pages stay cacheable. When a post's related list changes, its page is purged.
+
+### Lightbox
+
+The `lightbox` plugin opens linked images in a viewer. Themes opt in in theme.json:
+
+```json
+"plugins": {"lightbox": {"selector": ".entry-content"}}
+```
+
+`selector` (required, 1–200 characters, no `<` or `>`) scopes the viewer. On `single`, `page` and `front_page`
+views, `head` then adds the plugin's stylesheet and a deferred script. Nothing else changes in the page, the stored
+HTML or the CSP.
+
+Markup it acts on, inside the selector:
+
+- **Triggers:** an `<a href>` whose only element child is an `<img>`, with a same-origin href that's a `/m/` path or
+  ends in an image extension (`avif gif jpg jpeg png svg webp`). That's what content renders for images and gallery
+  items linked to their media file. Other links, off-origin images and links with text open normally.
+- **Sets:** triggers inside one `.gallery` element form a set with previous/next; any other image opens alone.
+- **Caption:** the `figcaption` of the trigger's closest `figure`, else the thumbnail's `alt`.
+- **Labels:** theme strings `lightbox.viewer`, `lightbox.close`, `lightbox.prev`, `lightbox.next`, `lightbox.open`
+  and `lightbox.counter` (with `{n}` and `{total}`); English defaults otherwise.
+
+Without JavaScript, or in a browser without `<dialog>`, the links open the image as before.
+
+#### Lightbox accessibility checklist
+
+Run this against `plugins/lightbox/testdata/harness.html` (serve `plugins/lightbox` over HTTP, for example with
+`python3 -m http.server 8000`, and open `/testdata/harness.html`), and once on a real post, with a keyboard and a
+screen reader (VoiceOver or NVDA). It covers the WCAG 2.2 AA criteria the viewer touches.
+
+| # | Check | WCAG |
+|---|---|---|
+| 1 | Tab to a gallery image and press Enter: the viewer opens and focus is on Close. | 2.1.1, 2.4.3 |
+| 2 | Tab and Shift+Tab move only between the viewer's controls (Close, Previous, Next, and "Open image" on error); the page behind is inert. | 2.4.3 |
+| 3 | Esc closes the viewer, and so does Close. Focus returns to the image link that opened it. | 2.1.2, 2.4.3 |
+| 4 | ←/→ move through the set, wrapping at the ends; the screen reader announces "2 of 3" (live region). Single images show no Previous/Next. | 2.1.1, 4.1.3 |
+| 5 | Every control shows a visible focus ring on the dark backdrop. | 2.4.7, 2.4.11 |
+| 6 | The screen reader announces a dialog named "Image viewer", buttons named Close / Previous image / Next image, and the image's alt text. | 4.1.2, 1.1.1 |
+| 7 | Buttons are at least 44×44 px; check on a phone. | 2.5.8 |
+| 8 | White text and icons on the backdrop measure at least 4.5:1 (icons and borders at least 3:1). | 1.4.3, 1.4.11 |
+| 9 | With reduced motion on in the OS, the image fade and the spinner don't animate. | 2.3.3 |
+| 10 | Swipe left/right on a touch screen moves through the set; tapping the backdrop closes; pinch-zoom still works. | 2.5.1 |
+| 11 | The broken image shows its alt text and an "Open image" link instead of a blank stage. | 1.1.1 |
+| 12 | Ctrl/Cmd-click, Shift-click and middle-click open the image in a new tab or window, as normal links do. | 3.2.5 |
+| 13 | The off-origin image, the text link, the image-with-text link and the image outside the selector open normally. | — |
+| 14 | At 400 % zoom (320 CSS px wide) the image, caption and controls stay usable without horizontal scrolling. | 1.4.10 |
 
 ## Comments
 
@@ -692,7 +765,9 @@ The command loads the theme, which fails on JSON errors, parse errors or unknown
 - every node partial against sample content.
 
 It fails on a missing field, a missing map key, a missing `t` string, an undeclared menu location or theme setting, an
-unguarded nil, or a template file that isn't part of the hierarchy (shared markup belongs in `parts/`).
+unguarded nil, or a template file that isn't part of the hierarchy (shared markup belongs in `parts/`). Every
+compiled-in plugin is loaded with its defaults (plugin funcs return sample data), and the check also fails on a `plg_`
+func no plugin provides and on a theme.json `plugins` entry that no plugin accepts or that its plugin rejects.
 
 `--rerender` then re-renders every post's stored HTML with the theme's node partials (needs `AFSC_DATABASE_URL`). When
 any post changed, it tells every running server to purge its page cache.

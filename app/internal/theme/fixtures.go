@@ -213,3 +213,14 @@ func FixtureKinds(name string) []string {
 	}
 	return nil
 }
+
+// FixtureRelated is sample data for a related-posts func in `afsc theme check`: up to n fixture posts other than p.
+func FixtureRelated(p *Post, n int) []*Post {
+	var out []*Post
+	for _, f := range fixturePosts(true) {
+		if len(out) < n && (p == nil || f.ID != p.ID) {
+			out = append(out, f)
+		}
+	}
+	return out
+}

@@ -14,6 +14,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"strings"
 	"sync"
@@ -80,6 +81,7 @@ type state struct {
 	assets   map[string]string // path under assets/ -> content hash
 	strings  map[string]string
 	scripts  []string // CSP hashes of the inline scripts in templates
+	missing  []string // plg_ funcs the templates name that no plugin provides; stubbed to return nil
 }
 
 var defaultStrings = map[string]string{
@@ -182,6 +184,9 @@ func (t *Theme) build() (*state, error) {
 	if st.scripts, err = templateScriptHashes(tdir); err != nil {
 		return nil, err
 	}
+	if st.missing, err = t.missingPluginFuncs(tdir); err != nil {
+		return nil, err
+	}
 	common := template.New("_").Funcs(t.funcMap(st)).Option("missingkey=error")
 	if src, err := os.ReadFile(filepath.Join(tdir, "base.html")); err == nil {
 		if _, err := common.New("base.html").Parse(string(src)); err != nil {
@@ -236,6 +241,41 @@ func (t *Theme) build() (*state, error) {
 		return nil, errors.New("templates/index.html is required")
 	}
 	return st, nil
+}
+
+var pluginFuncRe = regexp.MustCompile(`\bplg_[a-z][a-z0-9]{1,31}_[A-Za-z0-9_]+\b`)
+
+// missingPluginFuncs lists plg_ funcs the templates mention that no compiled-in plugin registered, so a theme
+// still parses when a plugin is removed. MissingFuncs reports them and `afsc theme check` fails on them.
+func (t *Theme) missingPluginFuncs(tdir string) ([]string, error) {
+	seen := map[string]bool{}
+	err := filepath.WalkDir(tdir, func(p string, d fs.DirEntry, err error) error {
+		if err != nil || d.IsDir() || !strings.HasSuffix(p, ".html") {
+			return err
+		}
+		b, err := os.ReadFile(p)
+		if err != nil {
+			return err
+		}
+		for _, name := range pluginFuncRe.FindAllString(string(b), -1) {
+			if t.opts.Funcs[name] == nil {
+				seen[name] = true
+			}
+		}
+		return nil
+	})
+	if errors.Is(err, fs.ErrNotExist) {
+		err = nil
+	}
+	return slices.Sorted(maps.Keys(seen)), err
+}
+
+func missingFunc(...any) any { return nil }
+
+// MissingFuncs are the plg_ funcs the templates call that no compiled-in plugin provides.
+func (t *Theme) MissingFuncs() []string {
+	st, _ := t.current()
+	return st.missing
 }
 
 func htmlFiles(dir string) ([]string, error) {

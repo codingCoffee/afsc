@@ -19,7 +19,9 @@
       {{- with .Bio}}<p>{{.}}</p>{{end}}
     </section>
     {{- end}}
+    {{- template "parts/share.html" .}}
   </footer>
 </article>
+{{template "parts/related.html" .}}
 {{template "parts/comments.html" .}}
 {{end}}

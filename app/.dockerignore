@@ -1,0 +1,10 @@
+# never send secrets or local state to the build context
+.env
+.env.*
+!.env.example
+tmp
+*.test
+client/node_modules
+client/.nuxt
+client/.output
+client/.data

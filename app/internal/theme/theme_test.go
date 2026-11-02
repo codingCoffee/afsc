@@ -49,12 +49,55 @@ func TestDefaultThemePassesCheck(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, r := range results {
+		// no plugins are compiled into this package's tests; the main package checks the theme with the registry
+		if r.Fixture == "plugin funcs" && r.Err != nil && strings.HasSuffix(r.Err.Error(), "plg_related_posts, plg_share_links") {
+			continue
+		}
 		if r.Err != nil {
 			t.Errorf("%s %s: %v", r.Template, r.Fixture, r.Err)
 		}
 	}
 	if len(results) == 0 {
 		t.Fatal("no checks ran")
+	}
+}
+
+func TestMissingPluginFuncsAreStubbed(t *testing.T) {
+	dir := writeTheme(t, map[string]string{
+		"templates/index.html": `<p>{{with plg_gone_thing .Post 3}}{{.}}{{else}}none{{end}}</p>{{range plg_gone_list .}}x{{end}}`,
+	})
+	th, err := Load(dir, Options{Backend: FixtureBackend(&Manifest{})})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := strings.Join(th.MissingFuncs(), " "); got != "plg_gone_list plg_gone_thing" {
+		t.Errorf("missing %q", got)
+	}
+	var b strings.Builder
+	if _, err := th.Page(&b, Fixture(KindHome, false)); err != nil || b.String() != "<p>none</p>" {
+		t.Errorf("render: %q %v", b.String(), err)
+	}
+	th, err = Load(dir, Options{Backend: FixtureBackend(&Manifest{}), Funcs: map[string]any{
+		"plg_gone_thing": func(any, int) string { return "here" }, "plg_gone_list": func(any) []int { return []int{1, 2} }}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	b.Reset()
+	if _, err := th.Page(&b, Fixture(KindHome, false)); err != nil || b.String() != "<p>here</p>xx" || len(th.MissingFuncs()) != 0 {
+		t.Errorf("with funcs: %q %v %v", b.String(), err, th.MissingFuncs())
+	}
+}
+
+func TestManifestPlugins(t *testing.T) {
+	for body, ok := range map[string]bool{
+		`{"name":"t","plugins":{"lightbox":{"selector":"main"}}}`: true,
+		`{"name":"t","plugins":{"Light_box":{}}}`:                 false,
+		`{"name":"t","plugins":{"lightbox":"main"}}`:              false,
+	} {
+		dir := writeTheme(t, map[string]string{"theme.json": body})
+		if _, err := LoadManifest(dir); (err == nil) != ok {
+			t.Errorf("%s: %v", body, err)
+		}
 	}
 }
 

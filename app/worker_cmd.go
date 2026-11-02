@@ -29,14 +29,16 @@ var jobConcurrencyFlag = &cli.IntFlag{Name: "job-concurrency", Value: 4, Usage: 
 
 func workerCmd() *cli.Command {
 	return &cli.Command{
-		Name:   "worker",
-		Usage:  "run only the job worker and scheduler",
-		Flags:  []cli.Flag{jobConcurrencyFlag},
+		Name:  "worker",
+		Usage: "run only the job worker and scheduler",
+		Flags: []cli.Flag{jobConcurrencyFlag,
+			&cli.BoolFlag{Name: "migrate", Usage: "run all pending migrations before starting"}},
 		Action: runWorker,
 	}
 }
 
 func runWorker(ctx context.Context, cmd *cli.Command) error {
+	setupLogging(os.Getenv("AFSC_ENV") == "dev")
 	n := cmd.Int("job-concurrency")
 	if n < 1 || n > 64 {
 		return errors.New("AFSC_JOB_CONCURRENCY must be between 1 and 64")
@@ -44,6 +46,11 @@ func runWorker(ctx context.Context, cmd *cli.Command) error {
 	dbURL := os.Getenv("AFSC_DATABASE_URL")
 	if dbURL == "" {
 		return errors.New("AFSC_DATABASE_URL is not set")
+	}
+	if cmd.Bool("migrate") {
+		if err := runAllMigrations(ctx); err != nil {
+			return fmt.Errorf("migrate up: %w", err)
+		}
 	}
 	pool, err := pgxpool.New(ctx, dbURL)
 	if err != nil {
@@ -66,9 +73,21 @@ func runWorker(ctx context.Context, cmd *cli.Command) error {
 	if err != nil {
 		return err
 	}
+	sets, err := migrationSets(rt)
+	if err != nil {
+		return err
+	}
+	if err := requireMigrations(ctx, pool, sets); err != nil {
+		return err
+	}
 	pub, err := site.New(ctx, site.Config{Pool: pool, BaseURL: baseURL, ThemeDir: themeDir, Logf: log.Printf, Plugins: rt})
 	if err != nil {
 		return err
+	}
+	if m := os.Getenv("AFSC_METRICS_ADDR"); m != "" {
+		if _, err := serveMetrics(ctx, m, pool, pub); err != nil {
+			return err
+		}
 	}
 	var wg sync.WaitGroup
 	wg.Go(func() { pub.Run(ctx) })

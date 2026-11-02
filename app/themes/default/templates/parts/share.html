@@ -1,0 +1,11 @@
+{{- with plg_share_links .Post}}
+<section class="share" aria-labelledby="share-title">
+  <h2 id="share-title" class="section-title">{{t "share"}}</h2>
+  <ul class="share-list">
+    {{- range .}}
+    <li><a class="share-link share-{{.Network}}" href="{{.URL}}" rel="noopener noreferrer nofollow"{{if ne .Network "email"}} target="_blank"{{end}}>
+      {{- template "parts/share-icon.html" .Network}}<span class="screen-reader-text">{{t "share_on"}} </span>{{.Label}}</a></li>
+    {{- end}}
+  </ul>
+</section>
+{{- end}}

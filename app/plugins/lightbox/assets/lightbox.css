@@ -1,0 +1,106 @@
+/* AFSC image lightbox. White on near-black throughout, so text and icons stay above 4.5:1 on any page. */
+.plg-lightbox {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  max-width: none;
+  max-height: none;
+  margin: 0;
+  padding: 4rem 1rem 1rem;
+  border: 0;
+  overflow: hidden;
+  background: rgb(10 10 12 / 0.94);
+  color: #fff;
+  font: 1rem/1.4 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  touch-action: pan-y pinch-zoom;
+}
+.plg-lightbox[open] {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+}
+.plg-lightbox::backdrop { background: rgb(10 10 12 / 0.6); }
+html:has(.plg-lightbox[open]) { overflow: hidden; }
+
+.plg-lightbox__stage {
+  position: relative;
+  display: flex;
+  flex: 1 1 auto;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  min-height: 0;
+}
+.plg-lightbox__img {
+  display: block;
+  max-width: 100%;
+  max-height: 100%;
+  width: auto;
+  height: auto;
+  object-fit: contain;
+  user-select: none;
+  transition: opacity 0.15s ease;
+}
+.plg-lightbox__img[hidden] { display: none; }
+.plg-lightbox.is-loading .plg-lightbox__img { opacity: 0; }
+
+.plg-lightbox__spinner {
+  display: none;
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 2.5rem;
+  height: 2.5rem;
+  margin: -1.25rem 0 0 -1.25rem;
+  border: 3px solid rgb(255 255 255 / 0.3);
+  border-top-color: #fff;
+  border-radius: 50%;
+  animation: plg-lightbox-spin 0.8s linear infinite;
+}
+.plg-lightbox.is-loading .plg-lightbox__spinner { display: block; }
+@keyframes plg-lightbox-spin { to { transform: rotate(1turn); } }
+
+.plg-lightbox__error,
+.plg-lightbox__caption,
+.plg-lightbox__count { margin: 0; max-width: 60rem; text-align: center; }
+.plg-lightbox__count { min-height: 1.4em; font-variant-numeric: tabular-nums; }
+.plg-lightbox a { color: #fff; text-decoration: underline; text-underline-offset: 0.15em; }
+
+.plg-lightbox__btn {
+  position: absolute;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.75rem;
+  height: 2.75rem;
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0;
+  border: 1px solid rgb(255 255 255 / 0.6);
+  border-radius: 50%;
+  background: rgb(0 0 0 / 0.6);
+  color: #fff;
+  font: 1.75rem/1 system-ui, sans-serif;
+  cursor: pointer;
+}
+.plg-lightbox__btn:hover { background: #000; }
+.plg-lightbox__btn[hidden] { display: none; }
+.plg-lightbox__btn:focus-visible,
+.plg-lightbox a:focus-visible {
+  outline: 3px solid #fff;
+  outline-offset: 2px;
+  box-shadow: 0 0 0 6px #000;
+}
+.plg-lightbox__close { top: 0.75rem; right: 0.75rem; }
+.plg-lightbox__prev,
+.plg-lightbox__next { top: 50%; transform: translateY(-50%); }
+.plg-lightbox__prev { left: 0.75rem; }
+.plg-lightbox__next { right: 0.75rem; }
+
+@media (prefers-reduced-motion: reduce) {
+  .plg-lightbox__img { transition: none; }
+  .plg-lightbox__spinner { animation: none; }
+}

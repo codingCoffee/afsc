@@ -1,6 +1,6 @@
 {
   "name": "default",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "image_sizes": {
     "thumbnail": {"width": 150, "height": 150, "crop": true},
     "medium": {"width": 300, "height": 300, "crop": false},
@@ -14,6 +14,9 @@
   },
   "assets": [{"path": "style.css"}],
   "csp": {},
+  "plugins": {
+    "lightbox": {"selector": ".entry-content"}
+  },
   "settings": {
     "show_reading_time": {"type": "bool", "label": "Show reading time on posts", "default": true}
   },
@@ -48,6 +51,15 @@
     "email": "Email",
     "website": "Website",
     "leave_empty": "Leave this field empty",
-    "post_comment": "Post comment"
+    "post_comment": "Post comment",
+    "related_posts": "Related posts",
+    "share": "Share",
+    "share_on": "Share on",
+    "lightbox.viewer": "Image viewer",
+    "lightbox.close": "Close",
+    "lightbox.prev": "Previous image",
+    "lightbox.next": "Next image",
+    "lightbox.open": "Open image",
+    "lightbox.counter": "{n} of {total}"
   }
 }

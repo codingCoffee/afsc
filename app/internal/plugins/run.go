@@ -15,6 +15,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"afsc/internal/jobs"
+	"afsc/internal/metrics"
 	"afsc/internal/settings"
 )
 
@@ -24,6 +25,8 @@ type Config struct {
 	BaseURL string
 	Secret  []byte // AFSC_JWT_SECRET, for Host.Key; nil where it isn't needed
 	Logf    func(format string, args ...any)
+	// Fixtures is set by `afsc theme check`; see Host.Fixtures.
+	Fixtures bool
 }
 
 type entry struct {
@@ -46,7 +49,10 @@ type Runtime struct {
 	schedules []jobs.Schedule
 	migs      []Migrations
 
+	importJobs []string
+
 	settings atomic.Pointer[func() *settings.All]
+	backend  atomic.Pointer[Backend]
 
 	logMu  sync.Mutex
 	logged map[string]time.Time
@@ -230,6 +236,7 @@ func call[T any](ctx context.Context, timeout time.Duration, fn func(context.Con
 
 // logFailure logs a failed hook call at most once a minute per plugin and hook.
 func (rt *Runtime) logFailure(plugin, hook string, err error) {
+	metrics.PluginFailures.Add(hook, 1)
 	key := plugin + " " + hook
 	rt.logMu.Lock()
 	last, seen := rt.logged[key]

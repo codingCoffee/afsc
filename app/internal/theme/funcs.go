@@ -18,6 +18,9 @@ import (
 
 func (t *Theme) funcMap(st *state) template.FuncMap {
 	fm := template.FuncMap{}
+	for _, name := range st.missing {
+		fm[name] = missingFunc
+	}
 	maps.Copy(fm, t.opts.Funcs)
 	maps.Copy(fm, t.coreFuncs(st))
 	return fm

@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lightbox a11y harness</title>
+<link rel="stylesheet" href="../assets/lightbox.css">
+<style>
+  body { max-width: 42rem; margin: 2rem auto; padding: 0 1rem; font: 1rem/1.6 system-ui, sans-serif; }
+  .gallery { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.5rem; }
+  .gallery figure, figure { margin: 0; }
+  img { max-width: 100%; height: auto; display: block; }
+  :focus-visible { outline: 2px solid #0b57d0; outline-offset: 2px; }
+</style>
+<script src="../assets/lightbox.js" defer data-selector=".entry-content" data-viewer="Image viewer" data-close="Close"
+  data-prev="Previous image" data-next="Next image" data-open="Open image" data-counter="{n} of {total}"></script>
+</head>
+<body>
+<h1>Lightbox harness</h1>
+<p>Serve this directory over HTTP (<code>cd plugins/lightbox &amp;&amp; python3 -m http.server 8000</code>, then open
+<code>http://localhost:8000/testdata/harness.html</code>) and run the checklist in <code>docs/themes.md</code>.</p>
+<p><a href="#after">A link before the content</a></p>
+
+<div class="entry-content">
+  <h2>Gallery (a set of three)</h2>
+  <div class="gallery galleryid-1 gallery-columns-3 gallery-size-thumbnail">
+    <figure class="gallery-item"><div class="gallery-icon landscape"><a href="img/1.svg"><img src="img/1.svg" alt="Blue card with the words Image 1" width="1200" height="800"></a></div></figure>
+    <figure class="gallery-item"><div class="gallery-icon landscape"><a href="img/2.svg"><img src="img/2.svg" alt="Green card with the words Image 2" width="1200" height="800"></a></div></figure>
+    <figure class="gallery-item"><div class="gallery-icon landscape"><a href="img/3.svg"><img src="img/3.svg" alt="Orange card with the words Image 3" width="1200" height="800"></a></div></figure>
+  </div>
+
+  <h2>Single image with a caption</h2>
+  <figure class="wp-caption alignnone">
+    <a href="img/2.svg"><img src="img/2.svg" alt="Green card" width="600" height="400"></a>
+    <figcaption class="wp-caption-text">A captioned image: the viewer shows this caption.</figcaption>
+  </figure>
+
+  <h2>Broken image</h2>
+  <p><a href="img/missing.png"><img src="img/1.svg" alt="This one fails to load in the viewer" width="300" height="200"></a></p>
+
+  <h2>Links that must open normally</h2>
+  <p><a href="https://example.com/photo.jpg"><img src="img/3.svg" alt="Off-origin link" width="300" height="200"></a></p>
+  <p><a href="img/1.svg">Text link to an image</a></p>
+  <p><a href="img/1.svg"><img src="img/1.svg" alt="" width="60" height="40"> with text</a></p>
+</div>
+
+<p id="after"><a href="img/2.svg"><img src="img/2.svg" alt="Outside the selector, opens normally" width="300" height="200"></a></p>
+</body>
+</html>

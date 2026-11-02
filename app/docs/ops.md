@@ -1,7 +1,204 @@
 # Operations
 
-Notes for running AFSC in production. This page covers media serving, imgproxy, the page cache, redirects and the
-404 log for now; later milestones add to it.
+Notes for running AFSC in production (build plan §16).
+
+- [Deployment](#deployment): container image, read-only filesystem, environment, probes, metrics
+- [Logging](#logging)
+- [Migrations](#migrations)
+- [Backups and restore](#backups-and-restore)
+- [Secret rotation](#secret-rotation)
+- [Media and imgproxy](#media-and-imgproxy)
+- [Page cache](#page-cache)
+- [Redirects and the 404 log](#redirects-and-the-404-log)
+- [Jobs](#jobs)
+- [Webhooks](#webhooks)
+- [Plugins](#plugins)
+- [Previews](#previews), [Admin access and sessions](#admin-access-and-sessions), [General](#general)
+
+## Deployment
+
+### Container image
+
+`app/Dockerfile` builds a static binary (`CGO_ENABLED=0`, `-tags prod`, so the admin SPA is embedded) on
+`gcr.io/distroless/static-debian12:nonroot`: no shell, no package manager, user `nonroot`. The themes are copied
+to `/srv/afsc/themes` and `AFSC_THEME_DIR` defaults to `/srv/afsc/themes/default`. Every input is pinned:
+
+| Build arg | What | How to look it up |
+|---|---|---|
+| `GO_IMAGE_DIGEST` | Digest of `golang:1.27.3-trixie` | `docker buildx imagetools inspect golang:1.27.3-trixie` |
+| `DISTROLESS_DIGEST` | Digest of `gcr.io/distroless/static-debian12:nonroot` | `docker buildx imagetools inspect gcr.io/distroless/static-debian12:nonroot` |
+| `BUN_SHA256` | SHA-256 of `bun-linux-x64.zip` (or `-aarch64` on an arm64 build host) for bun 1.4.4 | `SHASUMS256.txt` in the bun GitHub release; verify its signature (`SHASUMS256.txt.asc`) against bun's published key |
+
+bun is downloaded in the build stage and checked against `BUN_SHA256`, never piped from `curl` into a shell. Check
+the image digests and the bun version against the org's approved list, and refresh them for security releases.
+
+```
+docker build --build-arg GO_IMAGE_DIGEST=sha256:… --build-arg DISTROLESS_DIGEST=sha256:… \
+  --build-arg BUN_SHA256=… -t afsc:dev app/
+docker run --rm --read-only --cap-drop ALL --security-opt no-new-privileges:true \
+  --env-file app/.env -e AFSC_METRICS_ADDR=127.0.0.1:9090 -p 1381:1381 afsc:dev serve
+```
+
+- **Read-only root filesystem.** AFSC writes nothing to disk at run time: media goes to S3, caches are in memory.
+  Run with `--read-only` (Kubernetes: `readOnlyRootFilesystem: true`), no capabilities and no privilege escalation.
+  The only commands that write files are `afsc import --report <file>` and `afsc content`, run as one-off jobs with
+  a writable volume.
+- **Processes.** `afsc serve` (site, admin, API, and jobs unless `--no-worker`) and `afsc worker` (jobs and the
+  scheduler only). Run `afsc migrate up` as a one-off job before rolling out a release (see [Migrations](#migrations)).
+- **Compose.** `docker-compose.yml` has an `afsc` service in the `prod` profile that builds this image and runs it
+  read-only: `docker compose --profile prod up afsc` (port 1382) after exporting `AFSC_GO_IMAGE_DIGEST`,
+  `AFSC_DISTROLESS_DIGEST` and `AFSC_BUN_SHA256`. The default `app` service stays the dev setup.
+- **Dockerfile.dev** installs bun with `curl … | bash`. It's for local development only; don't base a production
+  image on it.
+
+### Environment
+
+Configuration is env only. Secrets come from a secret manager, never from git or an image layer.
+
+| Variable | Used by | Default | Meaning |
+|---|---|---|---|
+| `AFSC_DATABASE_URL` | all | — | Postgres URL. Use `sslmode=verify-full` outside a private network. A direct or session-pooled connection (see LISTEN below). |
+| `AFSC_JWT_SECRET` | serve, worker | — | At least 32 bytes. Signs access tokens; HKDF derives the preview, comment-form and plugin keys (webhook secrets). See [rotation](#afsc_jwt_secret). |
+| `AFSC_PUBLIC_BASE_URL` | serve, worker | — | The site's origin, for absolute URLs and the CSRF Origin check. Never taken from `Host`. |
+| `AFSC_THEME_DIR` | serve, worker, import | — (`/srv/afsc/themes/default` in the image) | Active theme directory. |
+| `AFSC_API_HOST`, `AFSC_API_PORT` | serve | `0.0.0.0`, `1381` | Public listener. |
+| `AFSC_METRICS_ADDR` | serve, worker | empty (off) | Private `host:port` for `/debug/vars`, for example `127.0.0.1:9090`. Must differ from the public port. |
+| `AFSC_JOB_CONCURRENCY` | serve, worker | 4 | Jobs a process runs at once (1–64). |
+| `AFSC_PAGE_CACHE_MB` | serve | 128 | In-process page cache; 0 disables it. |
+| `AFSC_ACCESS_TOKEN_EXPIRY_MINS` | serve | 5 | Access token lifetime. |
+| `AFSC_REFRESH_TOKEN_EXPIRY_DAYS` | serve | 7 | Absolute session lifetime. |
+| `AFSC_SESSION_IDLE_HOURS` | serve | 12 | Idle session timeout. |
+| `AFSC_SETUP_TOKEN` | serve | generated | First-run setup token while no users exist. |
+| `AFSC_TRUSTED_PROXIES` | serve | empty | CIDRs allowed to set `X-Forwarded-For`. |
+| `AFSC_S3_BUCKET`, `AFSC_S3_REGION` | serve, import | — | Media bucket. Credentials come from the AWS default chain (IAM role in production). |
+| `AFSC_S3_ENDPOINT`, `AFSC_S3_PATH_STYLE` | serve, import | empty, `false` | Only for S3-compatible servers in dev. |
+| `AFSC_IMGPROXY_URL`, `AFSC_IMGPROXY_KEY`, `AFSC_IMGPROXY_SALT` | serve | — | Private imgproxy and its signing pair. |
+| `AFSC_ENV` | serve, worker | empty | `dev` turns on theme hot reload, text logs and relaxed password rules. Never set it in production. |
+| `AFSC_TEST_DATABASE_URL`, `AFSC_SITEMAP_DUMP` | tests | — | Test-only. |
+
+### Health and readiness
+
+| Path | Answers | Use it for |
+|---|---|---|
+| `GET /healthz` | 200 `{"status":"ok"}` while the process runs. Touches nothing else. | Liveness |
+| `GET /readyz` | 200 when the database answers a ping within 2 s and core and every plugin migration set is current; else 503 with `{"db": "ok\|down", "migrations": "ok\|behind\|dirty\|unknown"}`. | Readiness, load balancer health checks |
+
+Both send `Cache-Control: no-store`, never enter the page cache, and successful probes aren't logged. A database
+that is *ahead* of the binary (an older replica during a rolling deploy) counts as ready. `afsc worker` has no HTTP
+listener; monitor it through its metrics port or its logs.
+
+```yaml
+# Kubernetes
+livenessProbe:  {httpGet: {path: /healthz, port: 1381}, periodSeconds: 10, failureThreshold: 3}
+readinessProbe: {httpGet: {path: /readyz,  port: 1381}, periodSeconds: 5,  failureThreshold: 2}
+```
+
+Distroless has no curl, so compose healthchecks for `afsc` need an external checker; rely on the orchestrator's HTTP
+probes instead.
+
+### Metrics
+
+With `AFSC_METRICS_ADDR` set, `serve` and `worker` serve stdlib `expvar` JSON at `GET /debug/vars` on that address,
+a separate listener: the public port never routes `/debug/vars`. Bind it to localhost or a private interface and
+never publish it; it logs a warning when bound to every interface.
+
+| Var | Meaning |
+|---|---|
+| `afsc_requests` | Responses by status class (`2xx`, `4xx`, `5xx`, …) |
+| `afsc_page_cache` | Page cache `hit` and `miss` |
+| `afsc_page_cache_size` | `entries` and `bytes` held now |
+| `afsc_jobs` | Finished runs by `<kind>.ok`, `<kind>.retry` and `<kind>.failed` (out of attempts) |
+| `afsc_jobs_pending` | Unfinished jobs by kind (queried when scraped) |
+| `afsc_webhook_deliveries` | Delivery attempts by `succeeded`, `retry`, `failed`, `cancelled` |
+| `afsc_plugin_failures` | Plugin hook, func and action failures by hook name |
+| `memstats`, `cmdline` | Go runtime defaults |
+
+Counters are per process and reset on restart. Alert on a growing `<kind>.failed`, on `afsc_jobs_pending` that keeps
+growing, and on `5xx`.
+
+## Logging
+
+`serve` and `worker` log JSON lines to stderr through `log/slog` (`AFSC_ENV=dev` switches to text). Every request
+gets one line:
+
+```json
+{"time":"…","level":"INFO","msg":"request","request_id":"9f2c…","method":"GET","path":"/hello/","status":200,"bytes":5120,"latency_ms":3.2}
+```
+
+- **Request ID.** Each response carries `X-Request-ID`. A well-formed ID from the proxy (8–64 of `A-Z a-z 0-9 . _ -`)
+  is kept, so it matches the load balancer's logs; anything else is replaced with a random one.
+- **Never logged:** query strings (preview tokens, search terms), invite tokens in paths (shown as `redacted`),
+  request and response bodies, cookies, `Authorization` headers, client IPs and user agents, passwords, session and
+  refresh tokens, comment emails and bodies, webhook secrets and signatures.
+- **One exception:** while there are no users, `afsc serve` logs the one-time setup token so the operator can create
+  the first admin. It's useless once used. To keep it out of logs entirely, set `AFSC_SETUP_TOKEN` from the secret
+  manager instead.
+- Other lines are the existing `log.Printf` messages (jobs, plugins, cache listener), routed through slog as
+  `INFO` with the text in `msg`.
+
+## Migrations
+
+- **Forward-only practice.** Every release's migrations must work with the previous release's code (add columns
+  and tables first, drop them a release later), so a rolling deploy and a binary rollback both keep working. Down
+  files exist for development, not for production rollbacks.
+- **Version tables.** Core uses `schema_migrations`; each plugin with migrations has `plg_<id>_schema_migrations`
+  (today `webhooks` and `related`). `afsc migrate up` applies core, then every plugin in registry order.
+- **Startup check.** `afsc serve` and `afsc worker` refuse to start when any set is behind the binary or dirty, and
+  say which one and what to run. `--migrate` applies pending migrations first (fine for a single instance; with
+  replicas, run the migration once as a job). A database ahead of the binary only logs a warning.
+- **In a deploy:** run `afsc migrate up` as a one-off job (same image, same env) before updating the deployment.
+  `/readyz` stays 503 on new replicas until it has run.
+- **Dirty version.** A migration failed half-way. Inspect the schema, finish or undo the change by hand, then set the
+  version in the version table (for example `UPDATE schema_migrations SET version = 9, dirty = false`) after a backup,
+  and run `afsc migrate up` again.
+
+## Backups and restore
+
+- **Database.** Use the provider's point-in-time recovery (7+ days), or `pg_dump -Fc` at least daily to storage in
+  another account, encrypted, with versioning and a lifecycle rule (for example 30 daily, 12 monthly):
+
+  ```
+  pg_dump -Fc --no-owner "$AFSC_DATABASE_URL" > afsc-$(date -u +%Y%m%dT%H%MZ).dump
+  ```
+
+- **Media.** Turn on bucket versioning plus a lifecycle rule that expires noncurrent versions after, for example, 90
+  days. Consider replication to a second region or account.
+- **Secrets** (`AFSC_JWT_SECRET`, imgproxy key and salt) live in the secret manager with its own backup. Keep them
+  apart from database backups: a dump plus the secret is enough to read webhook secrets.
+- **Restore drill** (at least quarterly, and after changing the backup setup):
+  1. Create an empty database and run `pg_restore --no-owner -d "$RESTORE_URL" afsc-….dump`.
+  2. Start `afsc serve` against it (no `--migrate`) with the same secret, a scratch bucket copy or read-only access
+     to the real one, and another `AFSC_PUBLIC_BASE_URL`.
+  3. Check `/readyz`, the home page, a post, an image, admin sign-in and the webhook list (no "rotate secret"
+     warnings).
+  4. Write down how long it took and anything that failed, then delete the scratch environment.
+
+## Secret rotation
+
+### AFSC_JWT_SECRET
+
+It signs access tokens, and HKDF derives from it the preview link key, the comment form token key and one key per
+plugin (`afsc-<id>`), which webhooks use to encrypt endpoint secrets. Rotating it:
+
+| What | Effect |
+|---|---|
+| Access tokens | Rejected at once. Sessions (refresh tokens are random and stored hashed) refresh silently, so editors stay signed in. To end every session too, delete `refresh_tokens` rows (after a backup). |
+| Preview links | Stop working; editors open a new preview. |
+| Comment forms | Pages rendered with the old key reject submissions until the page cache expires (one TTL); visitors reload. |
+| Webhook endpoint secrets | Can't be decrypted. Deliveries fail with "rotate this endpoint's secret", and Admin → Webhooks marks each endpoint. Rotate every endpoint's secret there and update each receiver. |
+
+Steps: generate a new value (`openssl rand -base64 48`), store it in the secret manager, restart every `serve` and
+`worker` together (the worker needs it to sign deliveries and refuses to start without it), then rotate each webhook
+endpoint's secret. Rotate on a schedule and immediately after a suspected leak.
+
+### Others
+
+- **imgproxy key and salt:** see [below](#rotating-the-imgproxy-key-and-salt).
+- **S3 keys:** prefer IAM roles. Static keys (S3-compatible servers): create the new key, update the secret, restart,
+  then delete the old key.
+- **IndexNow key:** change `seo.indexnow.key` in Settings; the old key file stops being served at once.
+- **Webhook endpoint secrets:** Admin → Webhooks → Rotate secret. The old secret stops working at once.
+- **Database password:** add a second role or password, switch `AFSC_DATABASE_URL`, restart, then drop the old one.
 
 ## Media and imgproxy
 
@@ -240,17 +437,52 @@ exact `manual` redirect noted `trashed post #id`, and republishing the post at t
 `afsc serve` runs a job worker and the scheduler unless started with `--no-worker`; `afsc worker` runs only those.
 `AFSC_JOB_CONCURRENCY` (default 4) sets how many jobs a process runs at once. Jobs live in the `jobs` table and are
 claimed with `FOR UPDATE SKIP LOCKED`, so any number of processes can work. A failed job retries with backoff
-(10 s doubling to 1 h, ±25 % jitter) up to `max_attempts` (8); its `last_error` is kept. Exactly one process leads
-the scheduler, holding a Postgres advisory lock on its own connection; if it dies another takes over within 10 s.
+(10 s doubling to 1 h, ±25 % jitter, unless the kind sets its own) up to `max_attempts` (8 unless set); its
+`last_error` is kept. Each job has 5 minutes. Exactly one process leads the scheduler, holding a Postgres advisory
+lock on its own connection; if it dies another takes over within 10 s.
 
-| Job | Every | Does |
+| Job | When | Does |
 |---|---|---|
-| `posts.publish_scheduled` | 30 s | Publishes scheduled posts whose date has passed, purges their pages and pings IndexNow |
-| `not_found.prune` | day | Drops 404 log rows past retention |
-| `auth.prune` | day | Drops expired sessions, used or expired invites and old login failures and lockouts |
-| `jobs.prune` | day | Drops jobs finished more than 7 days ago |
+| `posts.publish_scheduled` | every 30 s | Publishes scheduled posts whose date has passed, purges their pages and pings IndexNow |
+| `not_found.prune` | daily | Drops 404 log rows past retention |
+| `auth.prune` | daily | Drops expired sessions, used or expired invites and old login failures and lockouts |
+| `jobs.prune` | daily | Drops jobs finished more than 7 days ago |
+| `spam.retrain` | daily | Rebuilds the comment classifier |
+| `comments.retention` | daily | Deletes old spam and clears commenter IPs and user agents past retention |
+| `indexnow.ping` | on publish/update | Pings IndexNow with changed URLs |
+| `plugins.action` | on each event, per subscribed plugin | Runs that plugin's action handlers (3 attempts, 30 s each) |
+| `webhooks.deliver` | per delivery | Sends one signed webhook (8 attempts, 1 min × 4ⁿ up to 12 h) |
+| `webhooks.prune` | daily | Deletes deliveries older than 30 days |
+| `related.compute` | when a post is published or saved | Recomputes one post's related list |
+| `related.compute_all` | daily and after `afsc import` | Recomputes every post's list, 200 per job, chaining |
 
-Run at least one process with jobs enabled, or scheduled posts never go live.
+Run at least one process with jobs enabled, or scheduled posts never go live. Jobs of a switched-off plugin finish
+without doing anything.
+
+## Webhooks
+
+- **Egress.** Deliveries go only to public addresses (checked when connecting, after DNS), over https, with TLS 1.2+,
+  no proxy and no redirects. Still restrict egress at the network layer: allow outbound 443 from the AFSC hosts
+  only, and block `169.254.169.254` and the rest of link-local in the firewall or security group too (IMDSv2 with a
+  hop limit of 1 on AWS).
+- **Retention.** Delivery rows (payload, last status, first 1 KB of the response) are kept 30 days.
+- **Triage.** Admin → Webhooks lists each endpoint's last status and 24 h failures; the deliveries page shows the
+  status code, error and response. A 3xx means the URL moved (update it); other 4xx fail at once; 5xx, 408, 425,
+  429 and network errors retry for about 30 h. "Rotate this endpoint's secret" means `AFSC_JWT_SECRET` changed.
+  Watch `afsc_webhook_deliveries` and `webhooks.deliver.failed` in metrics.
+- A worker crash in the middle of a send can leave a delivery `pending` after its job ran out of attempts; Redeliver
+  it from the admin.
+
+## Plugins
+
+- Plugins are compiled in. Admins switch them on and off, and change their options, in Admin → Settings → Plugins;
+  the change applies on every replica within one settings reload and purges the page cache.
+- A failing filter, template func or action is skipped (comment checks fail closed to "pending") and logged at most
+  once a minute per plugin and hook, as `plugins: <id>: <hook> failed: …`. `afsc_plugin_failures` counts every
+  failure.
+- Plugin migrations run with `afsc migrate up` whether the plugin is on or off, and count for `/readyz`.
+- A theme that calls a plugin func no plugin provides, or configures an unknown plugin in theme.json, renders anyway;
+  `afsc serve` logs a warning at startup and `afsc theme check` fails.
 
 ## Previews
 

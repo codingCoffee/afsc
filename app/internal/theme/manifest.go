@@ -30,6 +30,8 @@ type Manifest struct {
 	Settings     map[string]Setting `json:"settings"`
 	Strings      map[string]string  `json:"strings"`
 	PostsPerPage map[string]int     `json:"posts_per_page"`
+	// Plugins configures compiled-in plugins by ID; each plugin validates its own value (see `afsc theme check`).
+	Plugins map[string]json.RawMessage `json:"plugins"`
 }
 
 type ImageSize = content.ImageSize
@@ -105,6 +107,7 @@ var PostsPerPageKinds = []string{"home", "category", "tag", "author", "date", "s
 var (
 	sizeNameRe = regexp.MustCompile(`^[a-z0-9_-]{1,40}$`)
 	keyRe      = regexp.MustCompile(`^[a-z0-9_.-]{1,64}$`)
+	pluginIDRe = regexp.MustCompile(`^[a-z][a-z0-9]{1,31}$`)
 )
 
 func LoadManifest(dir string) (*Manifest, error) {
@@ -186,6 +189,14 @@ func (m *Manifest) validate() error {
 	for k, n := range m.PostsPerPage {
 		if !slices.Contains(PostsPerPageKinds, k) || n < 1 || n > 100 {
 			bad("posts_per_page.%s: kind must be one of %s and the value 1-100", k, strings.Join(PostsPerPageKinds, " "))
+		}
+	}
+	for id, v := range m.Plugins {
+		if !pluginIDRe.MatchString(id) {
+			bad("plugins: %q is not a plugin id", id)
+		}
+		if t := bytes.TrimSpace(v); len(t) == 0 || t[0] != '{' {
+			bad("plugins.%s: must be an object", id)
 		}
 	}
 	if len(errs) > 0 {

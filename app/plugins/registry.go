@@ -4,7 +4,10 @@ package registry
 
 import (
 	"afsc/internal/plugins"
+	"afsc/plugins/lightbox"
 	"afsc/plugins/progress"
+	"afsc/plugins/related"
+	"afsc/plugins/share"
 	"afsc/plugins/spam"
 	"afsc/plugins/webhooks"
 )
@@ -14,6 +17,9 @@ func All() []plugins.Plugin {
 	return []plugins.Plugin{
 		spam.New(),
 		webhooks.New(),
+		related.New(),
+		share.New(),
+		lightbox.New(),
 		progress.New(),
 	}
 }

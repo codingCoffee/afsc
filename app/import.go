@@ -9,12 +9,14 @@ import (
 	"log"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/urfave/cli/v3"
 
 	"afsc/internal/content"
 	"afsc/internal/importer"
+	"afsc/internal/jobs"
 	"afsc/internal/settings"
 	"afsc/internal/site"
 	"afsc/internal/storage"
@@ -48,14 +50,14 @@ func runImport(ctx context.Context, cmd *cli.Command) error {
 	}
 	defer pool.Close()
 
+	rt, err := buildPlugins(ctx, nil, "", nil)
+	if err != nil {
+		return err
+	}
 	var tm *theme.Manifest
 	var parts content.Partials
 	if dir := cmd.String("theme"); dir != "" {
 		defaults := settings.Defaults()
-		rt, err := buildPlugins(ctx, nil, "", nil)
-		if err != nil {
-			return err
-		}
 		opts := themeOptions(rt)
 		opts.Backend = &theme.StaticBackend{S: &defaults}
 		th, err := theme.Load(dir, opts)
@@ -113,6 +115,14 @@ func runImport(ctx context.Context, cmd *cli.Command) error {
 	if !dryRun && !errors.Is(runErr, importer.ErrInvalid) {
 		if err := site.Notify(ctx, pool, site.Event{Refresh: true, All: true}); err != nil {
 			log.Printf("warning: page cache not purged, it expires within one TTL: %v", err)
+		}
+	}
+
+	if !dryRun && runErr == nil {
+		for _, kind := range rt.ImportJobs() {
+			if err := jobs.Enqueue(ctx, pool, kind, nil, time.Time{}); err != nil {
+				log.Printf("warning: could not queue %s: %v", kind, err)
+			}
 		}
 	}
 

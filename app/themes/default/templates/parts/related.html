@@ -1,0 +1,16 @@
+{{- with plg_related_posts .Post}}
+<section class="related-posts" aria-labelledby="related-posts-title">
+  <h2 id="related-posts-title" class="section-title">{{t "related_posts"}}</h2>
+  <ul class="related-list">
+    {{- range $p := .}}
+    <li class="related-item">
+      <a class="related-link" href="{{url $p}}">
+        {{- with $p.FeaturedMedia}}{{image . "medium" "(max-width: 40rem) 100vw, 13rem"}}{{end}}
+        <span class="related-name">{{$p.Title}}</span>
+      </a>
+      <p class="entry-meta">{{with $p.Primary}}{{.Name}} · {{end}}<time datetime="{{date $p.PublishedAt "2006-01-02T15:04:05Z07:00"}}">{{date $p.PublishedAt}}</time></p>
+    </li>
+    {{- end}}
+  </ul>
+</section>
+{{- end}}

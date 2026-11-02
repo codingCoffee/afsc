@@ -125,3 +125,74 @@ func TestPluginRenderFilters(t *testing.T) {
 		t.Errorf("page sitemap lacks the plugin entry: %s", sm)
 	}
 }
+
+func TestPluginBackend(t *testing.T) {
+	dbURL := os.Getenv("AFSC_TEST_DATABASE_URL")
+	if dbURL == "" {
+		t.Skip("AFSC_TEST_DATABASE_URL not set")
+	}
+	ctx := context.Background()
+	pool, err := pgxpool.New(ctx, dbURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer pool.Close()
+	tm, err := theme.LoadManifest("../../themes/default")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rep, err := importer.Run(ctx, importer.Options{BundleDir: "../../testdata/bundle-sample", Theme: tm, Pool: pool,
+		Storage: memStorage{}}); err != nil {
+		t.Fatalf("import: %v %+v", err, rep.Errors)
+	}
+	rt, err := plugins.Build(ctx, plugins.Config{DB: pool, BaseURL: "https://blog.example.com", Logf: t.Logf}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	st, err := New(ctx, Config{Pool: pool, BaseURL: "https://blog.example.com", ThemeDir: "../../themes/default", Logf: t.Logf,
+		Plugins: rt})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var published, unpublished []int64
+	rows, err := pool.Query(ctx, `SELECT id, status = 'published' AND published_at <= now() FROM posts ORDER BY id DESC LIMIT 50`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var id int64
+	var live bool
+	for rows.Next() {
+		if err := rows.Scan(&id, &live); err != nil {
+			t.Fatal(err)
+		}
+		if live {
+			published = append(published, id)
+		} else {
+			unpublished = append(unpublished, id)
+		}
+	}
+	rows.Close()
+	if len(published) < 2 {
+		t.Fatalf("the sample bundle has %d published posts", len(published))
+	}
+	ids := []int64{published[1], -1, published[0]}
+	ids = append(ids, unpublished...)
+	got, err := st.Posts(ctx, ids)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 2 || got[0].ID != published[1] || got[1].ID != published[0] {
+		t.Fatalf("Posts kept the wrong posts or order: %d", len(got))
+	}
+	for _, p := range got {
+		if !strings.HasPrefix(p.URL, "https://blog.example.com/") || p.Title == "" {
+			t.Errorf("post %d is not hydrated: %+v", p.ID, p)
+		}
+	}
+	if err := st.PurgePosts(ctx, published[:2]); err != nil {
+		t.Error(err)
+	}
+	if st.ThemeManifest().Plugins["lightbox"] == nil {
+		t.Error("the default theme opts into the lightbox")
+	}
+}

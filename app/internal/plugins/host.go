@@ -29,6 +29,8 @@ type Host struct {
 	errs   []error
 	decls  []Setting
 	assets map[string]asset // name -> file
+
+	themeCheck func(json.RawMessage) error
 }
 
 func (h *Host) fail(format string, args ...any) { h.errs = append(h.errs, fmt.Errorf(format, args...)) }

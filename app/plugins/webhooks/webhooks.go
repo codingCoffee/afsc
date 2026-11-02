@@ -20,6 +20,7 @@ import (
 	"github.com/jackc/pgx/v5"
 
 	"afsc/internal/jobs"
+	"afsc/internal/metrics"
 	"afsc/internal/plugins"
 	"afsc/internal/safehttp"
 )
@@ -93,12 +94,12 @@ type body struct {
 const sqlFanOut = `
 WITH d AS (
   INSERT INTO plg_webhooks_deliveries (endpoint_id, event_id, event, payload)
-  SELECT id, $1, $2, $3::json FROM plg_webhooks_endpoints WHERE enabled AND $2 = ANY(events)
+  SELECT id, $1::uuid, $2::text, $3::json FROM plg_webhooks_endpoints WHERE enabled AND $2::text = ANY(events)
   ON CONFLICT (endpoint_id, event_id) WHERE redelivery_of IS NULL DO NOTHING
   RETURNING id
 )
 INSERT INTO jobs (kind, payload, max_attempts)
-SELECT $4, jsonb_build_object('delivery_id', id), $5 FROM d`
+SELECT $4::text, jsonb_build_object('delivery_id', id), $5::int FROM d`
 
 // fanOut queues one delivery per enabled endpoint subscribed to the event. Re-running it adds nothing.
 func (p *Plugin) fanOut(ctx context.Context, ev plugins.Envelope[json.RawMessage]) error {
@@ -228,6 +229,11 @@ func headers(event, eventID string, deliveryID int64) map[string]string {
 }
 
 func (p *Plugin) record(ctx context.Context, id int64, attempts int, o outcome) error {
+	if o.status == "pending" {
+		metrics.Webhooks.Add("retry", 1)
+	} else {
+		metrics.Webhooks.Add(o.status, 1)
+	}
 	var errText *string
 	if o.err != "" {
 		e := cleanText([]byte(o.err))
