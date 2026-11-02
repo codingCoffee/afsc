@@ -1,10 +1,11 @@
 <script setup lang="ts">
 import type { FieldDesc, FieldKind } from '@/components/settings/groups'
-import type { SettingsResponse } from '@/types/api'
+import type { PluginsValue, SettingsResponse } from '@/types/api'
 import { TriangleAlert } from '@lucide/vue'
 import { computed, ref, watch } from 'vue'
 import { toast } from 'vue-sonner'
 import { settingsGroups, useCspReportOnly } from '@/components/settings/groups'
+import PluginsSettings from '@/components/settings/PluginsSettings.vue'
 import SettingsField from '@/components/settings/SettingsField.vue'
 import SpamBlocklist from '@/components/settings/SpamBlocklist.vue'
 import { API } from '@/composables/useAuth'
@@ -31,6 +32,12 @@ const errors = ref<{ field: string, message: string } | null>(null)
 const saving = ref(false)
 
 const themeName = computed(() => data.value?.theme.name ?? '')
+const isPlugins = computed(() => desc.value?.group === 'plugins')
+
+function pluginsSaved(v: PluginsValue) {
+  if (data.value)
+    data.value.values.plugins = v
+}
 const isTheme = computed(() => desc.value?.group === 'theme_settings')
 
 const themeKinds: Record<string, FieldKind> = { bool: 'switch', number: 'number', select: 'select', color: 'color', string: 'text' }
@@ -141,6 +148,17 @@ const unmatched = computed(() => {
         <FormError v-else-if="loadError" :message="loadError" />
         <div v-else-if="!data" class="grid gap-4">
           <Skeleton v-for="i in 4" :key="i" class="h-14 w-full" />
+        </div>
+
+        <div v-else-if="isPlugins" class="grid gap-5">
+          <h2 class="font-display text-sm tracking-wide uppercase">
+            {{ desc.title }}
+          </h2>
+          <PluginsSettings
+            :plugins="data.plugins ?? []"
+            :value="data.values.plugins as PluginsValue | undefined"
+            @saved="pluginsSaved"
+          />
         </div>
 
         <form v-else class="grid gap-5" @submit.prevent="save">

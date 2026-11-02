@@ -10,6 +10,7 @@ import (
 	"github.com/jackc/pgx/v5"
 
 	"afsc/internal/audit"
+	"afsc/internal/plugins"
 	"afsc/internal/site"
 )
 
@@ -69,6 +70,11 @@ func scanTerm(row pgx.Row, extra ...any) (*Term, error) {
 
 // termURLs fills in public archive URLs; category paths include every ancestor's slug.
 func (s *Service) termURLs(ctx context.Context, terms []*Term) error {
+	return s.termURLsIn(ctx, s.DB, terms)
+}
+
+// termURLsIn reads categories through db, so a transaction sees its own writes.
+func (s *Service) termURLsIn(ctx context.Context, db querier, terms []*Term) error {
 	perm, err := s.perm()
 	if err != nil {
 		return err
@@ -78,7 +84,7 @@ func (s *Service) termURLs(ctx context.Context, terms []*Term) error {
 		path := t.Slug
 		if t.Taxonomy == "category" {
 			if cats == nil {
-				if cats, err = s.categories(ctx); err != nil {
+				if cats, err = categories(ctx, db); err != nil {
 					return err
 				}
 			}
@@ -94,8 +100,12 @@ type catNode struct {
 	slug   string
 }
 
-func (s *Service) categories(ctx context.Context) (map[int64]catNode, error) {
-	rows, err := s.DB.Query(ctx, `SELECT id, coalesce(parent_id, 0), slug FROM terms WHERE taxonomy = 'category'`)
+type querier interface {
+	Query(ctx context.Context, sql string, args ...any) (pgx.Rows, error)
+}
+
+func categories(ctx context.Context, db querier) (map[int64]catNode, error) {
+	rows, err := db.Query(ctx, `SELECT id, coalesce(parent_id, 0), slug FROM terms WHERE taxonomy = 'category'`)
 	if err != nil {
 		return nil, err
 	}
@@ -242,6 +252,9 @@ INSERT INTO terms (taxonomy, slug, name, description, parent_id) VALUES ($1, $2,
 	if err := act.audit(ctx, tx, "term.create", "term", id, in); err != nil {
 		return nil, err
 	}
+	if err := s.emitTerm(ctx, tx, id); err != nil {
+		return nil, err
+	}
 	if err := tx.Commit(ctx); err != nil {
 		return nil, err
 	}
@@ -298,6 +311,9 @@ UPDATE terms SET slug = $2, name = $3, description = $4, parent_id = $5, updated
 	if err := act.audit(ctx, tx, "term.update", "term", id, diff); err != nil {
 		return nil, err
 	}
+	if err := s.emitTerm(ctx, tx, id); err != nil {
+		return nil, err
+	}
 	if err := tx.Commit(ctx); err != nil {
 		return nil, err
 	}
@@ -324,6 +340,22 @@ UPDATE terms SET slug = $2, name = $3, description = $4, parent_id = $5, updated
 		return nil, err
 	}
 	return s.GetTerm(ctx, id)
+}
+
+func (s *Service) emitTerm(ctx context.Context, tx pgx.Tx, id int64) error {
+	rt := s.Site.Plugins()
+	if rt == nil {
+		return nil
+	}
+	t, err := scanTerm(tx.QueryRow(ctx, sqlTerm, id))
+	if err != nil {
+		return err
+	}
+	if err := s.termURLsIn(ctx, tx, []*Term{t}); err != nil {
+		return err
+	}
+	return plugins.Emit(ctx, rt, tx, plugins.TermSaved,
+		plugins.TermData{ID: t.ID, Taxonomy: t.Taxonomy, Slug: t.Slug, Name: t.Name, URL: *t.URL})
 }
 
 // reparent moves the subcategories of id up to parent before id goes away.

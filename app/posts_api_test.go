@@ -321,7 +321,7 @@ ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value`, postsBody(seo)); err !=
 
 	pings := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusOK) }))
 	defer pings.Close()
-	runner := newJobsRunner(env.pool, pub, testOrigin, 2)
+	runner := newJobsRunner(env.pool, pub, testOrigin, 2, nil)
 	runner.pinger.Client, runner.pinger.Endpoint = pings.Client(), pings.URL
 	wg.Go(func() { runner.run(runCtx) })
 

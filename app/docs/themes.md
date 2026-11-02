@@ -493,6 +493,12 @@ undeclared size is an error.
 
 Not yet available: `related_posts` and `share_links` arrive with M5.
 
+### Plugin funcs
+
+Plugins add funcs named `plg_<plugin id>_<name>`, for example `{{ plg_progress_bar . }}`. They're always defined,
+so a theme parses whether the plugin is on or off; while it's off they return nothing. `afsc theme check` knows
+every compiled-in plugin's funcs. See `docs/plugins.md` for the built-in ones.
+
 ## Comments
 
 `.Comments` holds the comment section. The default theme's `parts/comments.html` and `parts/comment.html` are a

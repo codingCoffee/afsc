@@ -23,7 +23,7 @@ func PersonID(site string, a *theme.Author) string {
 }
 
 // graph builds the §8.3 JSON-LD @graph as a <script> tag, or "" for pages without one.
-func (in *Input) graph(title, desc, canonical string) string {
+func (in *Input) graph(title, desc, canonical string) []node {
 	d, s := in.Page, in.Settings
 	site := d.Site.URL
 	lang := strings.ReplaceAll(d.Site.Language, "_", "-")
@@ -59,7 +59,7 @@ func (in *Input) graph(title, desc, canonical string) string {
 	}
 
 	if d.Kind == theme.Kind404 || d.Kind == theme.Kind410 {
-		return script(append(g, website, publisher))
+		return append(g, website, publisher)
 	}
 
 	pageURL := canonical
@@ -137,7 +137,7 @@ func (in *Input) graph(title, desc, canonical string) string {
 	g = append(g, crumbs(in.Crumbs, pageURL)...)
 	g = append(g, website, publisher)
 	g = append(g, people...)
-	return script(append(g, videos...))
+	return append(g, videos...)
 }
 
 func sortedKeys(m map[string]string) []string {
@@ -279,6 +279,9 @@ func crumbs(cs []theme.Crumb, pageURL string) []node {
 }
 
 func script(g []node) string {
+	if len(g) == 0 {
+		return ""
+	}
 	b, err := json.Marshal(node{"@context": "https://schema.org", "@graph": g})
 	if err != nil {
 		return ""

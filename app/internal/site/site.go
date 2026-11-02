@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"html"
+	"html/template"
 	"net/http"
 	"strings"
 	"sync"
@@ -15,6 +16,7 @@ import (
 	"afsc/internal/content"
 	"afsc/internal/media"
 	"afsc/internal/pagecache"
+	"afsc/internal/plugins"
 	"afsc/internal/settings"
 	"afsc/internal/spam"
 	"afsc/internal/storage"
@@ -36,6 +38,8 @@ type Config struct {
 	PreviewKey []byte
 	// CommentSigner signs comment form tokens and notice cookies; nil means a random per-process key.
 	CommentSigner *spam.Signer
+	// Plugins runs plugin hooks and funcs; nil means none. New binds it to the live settings.
+	Plugins *plugins.Runtime
 }
 
 // maxEntryBytes caps a single cached page.
@@ -76,7 +80,9 @@ func New(ctx context.Context, cfg Config) (*Site, error) {
 		return nil, fmt.Errorf("load site data: %w", err)
 	}
 	st.snap.Store(snap)
-	opts := theme.Options{Dev: cfg.Dev, Backend: st, OnReload: st.purgeAll}
+	cfg.Plugins.Bind(st.Settings)
+	opts := theme.Options{Dev: cfg.Dev, Backend: st, OnReload: st.purgeAll, Funcs: cfg.Plugins.Funcs(),
+		HeadFilter: st.filterHTML(plugins.HeadTags), BodyFilter: st.filterHTML(plugins.BodyEnd)}
 	if st.theme, err = theme.Load(cfg.ThemeDir, opts); err != nil {
 		return nil, fmt.Errorf("load theme %s: %w", cfg.ThemeDir, err)
 	}
@@ -127,6 +133,19 @@ func (st *Site) Run(ctx context.Context) {
 		case <-st.nf.full:
 			st.flushNotFound(ctx)
 		}
+	}
+}
+
+// Plugins is the plugin runtime the site was built with; nil when there is none.
+func (st *Site) Plugins() *plugins.Runtime { return st.cfg.Plugins }
+
+// filterHTML adapts an HTML filter to the theme's head and footer hooks. Template funcs carry no request context.
+func (st *Site) filterHTML(f plugins.Filter[template.HTML, *theme.PageData]) func(*theme.PageData, template.HTML) template.HTML {
+	if !st.cfg.Plugins.HasFilter(f.Name) {
+		return nil
+	}
+	return func(d *theme.PageData, h template.HTML) template.HTML {
+		return plugins.ApplyFilter(context.Background(), st.cfg.Plugins, f, h, d)
 	}
 }
 

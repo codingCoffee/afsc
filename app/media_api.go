@@ -46,7 +46,8 @@ func mediaImages(themeDir string) func() *content.ImageSizes {
 // admin builds the library service. ok is false when the storage can't stream or delete (it only matters to writes).
 func (mh *mediaHandler) admin() (*media.Admin, bool) {
 	sm, ok := mh.d.storage.(storage.Manager)
-	return &media.Admin{DB: mh.d.pool, Storage: sm, Images: mediaImages(mh.d.themeDir), Logf: log.Printf}, ok
+	return &media.Admin{DB: mh.d.pool, Storage: sm, Images: mediaImages(mh.d.themeDir), Logf: log.Printf,
+		Plugins: mh.d.plugins, BaseURL: mh.d.baseURL}, ok
 }
 
 func (mh *mediaHandler) writer(c *echo.Context) (*media.Admin, error) {

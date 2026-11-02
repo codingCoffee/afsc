@@ -51,6 +51,11 @@ type Options struct {
 	Dev      bool // re-read the theme when its files change
 	Backend  Backend
 	OnReload func() // called after a successful dev reload
+	// Funcs are extra template funcs (plugins); they can't replace built-in ones.
+	Funcs template.FuncMap
+	// HeadFilter and BodyFilter are the head.tags and body.end plugin hooks; nil leaves the output alone.
+	HeadFilter func(d *PageData, h template.HTML) template.HTML
+	BodyFilter func(d *PageData, h template.HTML) template.HTML
 }
 
 type Theme struct {

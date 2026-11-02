@@ -1,0 +1,19 @@
+.plg-progress {
+  position: fixed;
+  inset: 0 0 auto 0;
+  height: var(--plg-progress-height, 3px);
+  z-index: 1000;
+  pointer-events: none;
+}
+.plg-progress__bar {
+  height: 100%;
+  background: var(--plg-progress-color, #2271b1);
+  transform: scaleX(0);
+  transform-origin: 0 50%;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .plg-progress__bar { transition: transform 0.1s linear; }
+}
+@media print {
+  .plg-progress { display: none; }
+}

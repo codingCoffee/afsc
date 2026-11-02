@@ -105,7 +105,7 @@ func TestSettingsGroups(t *testing.T) {
 			t.Errorf("%s invalid: %d %s (want field %q)", c.group, r.code, r.body, c.field)
 		}
 	}
-	if r := put("plugins", "{}"); r.code != http.StatusNotFound {
+	if r := put("nope", "{}"); r.code != http.StatusNotFound {
 		t.Errorf("unknown group: %d", r.code)
 	}
 

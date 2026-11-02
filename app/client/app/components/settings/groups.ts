@@ -134,6 +134,13 @@ export const settingsGroups: GroupDesc[] = [
     description: 'Options the active theme declares in theme.json.',
     fields: [],
   },
+  {
+    slug: 'plugins',
+    group: 'plugins',
+    title: 'Plugins',
+    description: 'Compiled-in plugins: switch them on or off and set their options.',
+    fields: [],
+  },
 ]
 
 export const cspDirectives = ['script-src', 'style-src', 'img-src', 'font-src', 'connect-src', 'frame-src']

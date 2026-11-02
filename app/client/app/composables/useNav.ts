@@ -17,6 +17,7 @@ import {
   TriangleAlert,
   UserPen,
   Users,
+  Webhook,
 } from '@lucide/vue'
 
 export interface NavItem {
@@ -65,6 +66,7 @@ export const navGroups: NavGroup[] = [
     label: 'Admin',
     items: [
       { label: 'Settings', to: '/settings', icon: Settings, cap: 'settings.manage' },
+      { label: 'Webhooks', to: '/webhooks', icon: Webhook, cap: 'settings.manage' },
       { label: 'Users', to: '/users', icon: Users, cap: 'users.manage' },
       { label: 'Audit log', to: '/audit', icon: ScrollText, cap: 'audit.read' },
     ],

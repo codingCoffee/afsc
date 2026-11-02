@@ -50,7 +50,7 @@ func TestCSPComposition(t *testing.T) {
 			if err := all.Validate(); err != nil {
 				t.Fatal(err)
 			}
-			h := securityHeaderSet(&all, "https://blog.example.com", &theme.Manifest{CSP: c.csp}, c.scripts)
+			h := securityHeaderSet(&all, "https://blog.example.com", &theme.Manifest{CSP: c.csp}, c.scripts, nil)
 			got := h.Get(c.header)
 			if got == "" {
 				t.Fatalf("no %s header in %v", c.header, h)
@@ -79,11 +79,11 @@ func TestCSPComposition(t *testing.T) {
 
 	t.Run("hsts only on https and when enabled", func(t *testing.T) {
 		all := settings.Defaults()
-		if h := securityHeaderSet(&all, "http://localhost:8080", nil, nil); h.Get("Strict-Transport-Security") != "" {
+		if h := securityHeaderSet(&all, "http://localhost:8080", nil, nil, nil); h.Get("Strict-Transport-Security") != "" {
 			t.Error("HSTS on http")
 		}
 		all.Security.HSTS = false
-		if h := securityHeaderSet(&all, "https://blog.example.com", nil, nil); h.Get("Strict-Transport-Security") != "" {
+		if h := securityHeaderSet(&all, "https://blog.example.com", nil, nil, nil); h.Get("Strict-Transport-Security") != "" {
 			t.Error("HSTS while disabled")
 		}
 	})

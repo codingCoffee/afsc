@@ -30,14 +30,25 @@ type Worker struct {
 
 	id       string
 	handlers map[string]Handler
+	backoffs map[string]func(int) time.Duration
+}
+
+// Options tunes one job kind. Attempts are set per job (jobs.max_attempts, default 8).
+type Options struct {
+	Backoff func(attempt int) time.Duration // nil uses Worker.Backoff
 }
 
 // Handle registers h for kind. Call before Run.
-func (w *Worker) Handle(kind string, h Handler) {
+func (w *Worker) Handle(kind string, h Handler) { w.HandleWith(kind, h, Options{}) }
+
+// HandleWith registers h for kind with its own retry backoff.
+func (w *Worker) HandleWith(kind string, h Handler, o Options) {
 	if w.handlers == nil {
 		w.handlers = map[string]Handler{}
+		w.backoffs = map[string]func(int) time.Duration{}
 	}
 	w.handlers[kind] = h
+	w.backoffs[kind] = o.Backoff
 }
 
 // DefaultBackoff doubles from 10 s up to 1 h, with ±25 % jitter so retries of a failing kind spread out.
@@ -141,9 +152,13 @@ func (w *Worker) runOnce(ctx context.Context) (bool, error) {
 		w.Logf("jobs: %s #%d failed for good after %d attempts: %v", kind, id, attempts, runErr)
 		_, err = w.DB.Exec(rctx, `UPDATE jobs SET done_at = now(), locked_at = NULL, last_error = $2 WHERE id = $1`, id, runErr.Error())
 	default:
+		backoff := w.Backoff
+		if b := w.backoffs[kind]; b != nil {
+			backoff = b
+		}
 		_, err = w.DB.Exec(rctx, `
 UPDATE jobs SET run_at = now() + make_interval(secs => $3), locked_at = NULL, locked_by = NULL, last_error = $2
-WHERE id = $1`, id, runErr.Error(), w.Backoff(attempts).Seconds())
+WHERE id = $1`, id, runErr.Error(), backoff(attempts).Seconds())
 	}
 	if err != nil {
 		return true, fmt.Errorf("record %s #%d: %w", kind, id, err)

@@ -1,4 +1,4 @@
-# Admin API (M3, M4)
+# Admin API (M3, M4, M5)
 
 Every route is under `/admin/api/v1`, registered through `route()` with one capability (see `internal/authz`).
 Requests carry `Authorization: Bearer <access token>`. Every non-GET request must send
@@ -90,11 +90,11 @@ category moves its subcategories up a level. Author DELETE with posts and no `re
 ## Settings and dashboard (M3e)
 | Method | Path | Cap | Notes |
 |---|---|---|---|
-| GET | /settings | settings.manage | `{values: {group: value}, theme: {name, settings: ThemeSettingDecl[]}, csp_report_only}` |
+| GET | /settings | settings.manage | `{values: {group: value}, theme: {name, settings: ThemeSettingDecl[]}, plugins: PluginListing[], csp_report_only}` |
 | PUT | /settings/:group | settings.manage | body = the whole group value; 400 `{message, field}` from settings.Validate; returns `{group, value}` |
 | GET | /dashboard | self | `Dashboard` |
 
-`:group` is one of `site permalinks reading seo discussion cache media security snippets theme_settings`.
+`:group` is one of `site permalinks reading seo discussion cache media security snippets theme_settings plugins`.
 `snippets` and `security` are admin-only like every settings group. Every save writes an audit diff and purges the
 whole page cache.
 
@@ -102,6 +102,16 @@ The body replaces the group; omitted fields take their defaults and unknown keys
 group (`timezone`, `extra_csp_hosts.script-src`, `knowledge_graph.type`; `<theme name>.<key>` for theme_settings).
 References (`reading.home`, `reading.posts_page`, the seo media refs) must be ids of an existing page or media item.
 Only the active theme's values are checked against its theme.json declarations; other themes' values are kept.
+
+`plugins` (M5) is `{enabled: {id: bool}, settings: {id: {key: value}}}`. Values are checked against each compiled-in
+plugin's declarations (`field` is `enabled.<id>` or `settings.<id>.<key>`); values for plugins no longer compiled in
+are kept. An always-on plugin can't be set to false. `PluginListing` is `{id, name, description, always_on,
+default_enabled, settings: [{key, label, help?, type, default, options?, min?, max?}]}`.
+
+## Plugin routes (M5)
+Plugins mount their own routes under `/admin/api/v1/plugins/<id>/…` through `route()`, so each has a capability, the
+Origin/JSON guard and the capability test. A switched-off plugin's routes answer 404. See `docs/plugins.md`.
+The webhooks routes (`/plugins/webhooks/…`, settings.manage) are listed in `docs/webhooks.md`.
 
 ## SEO (M3f)
 | Method | Path | Cap | Notes |

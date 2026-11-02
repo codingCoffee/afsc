@@ -52,6 +52,24 @@ type Input struct {
 	Logo         *theme.Media // seo.knowledge_graph.logo_media
 	Location     *time.Location
 	Now          time.Time
+	// MetaFilter and GraphFilter are the seo.meta and seo.schema_graph plugin hooks; nil leaves the output alone.
+	MetaFilter  func(*Meta) *Meta
+	GraphFilter func([]map[string]any) []map[string]any
+}
+
+// Tag is one head tag after <title>: Kind "name" or "property" prints <meta Kind=Key content=Value>, "rel"
+// prints <link rel=Key href=Value>.
+type Tag struct {
+	Kind  string
+	Key   string
+	Value string
+}
+
+// Meta is the head output the seo.meta filter sees: the <title> text and every tag after it, in order. The
+// JSON-LD graph goes through its own filter.
+type Meta struct {
+	Title string
+	Tags  []Tag
 }
 
 const (
@@ -106,10 +124,23 @@ func Build(in Input) (h *theme.Head, unknown []string) {
 	}
 	in.openGraph(m, ov, title, desc, h.Canonical)
 	in.twitter(m, ov)
-	if g := in.graph(title, desc, h.Canonical); g != "" {
-		m.b.WriteString(g)
+	meta := &Meta{Title: title, Tags: m.list}
+	if in.MetaFilter != nil {
+		if out := in.MetaFilter(meta); out != nil {
+			meta = out
+		}
 	}
-	h.Tags = template.HTML(m.b.String())
+	h.Title = meta.Title
+	var b strings.Builder
+	for _, t := range meta.Tags {
+		t.write(&b)
+	}
+	g := in.graph(title, desc, h.Canonical)
+	if in.GraphFilter != nil {
+		g = in.GraphFilter(g)
+	}
+	b.WriteString(script(g))
+	h.Tags = template.HTML(b.String())
 	return h, unknown
 }
 
@@ -384,24 +415,29 @@ func isoTime(t time.Time) string {
 	return t.UTC().Format(time.RFC3339)
 }
 
-// tags accumulates escaped head tags, skipping empty values.
-type tags struct{ b strings.Builder }
+// tags accumulates head tags, skipping empty values.
+type tags struct{ list []Tag }
 
-func (t *tags) meta(name, content string) {
-	if content != "" {
-		t.b.WriteString(`<meta name="` + esc(name) + `" content="` + esc(content) + "\">\n")
+func (t *tags) add(kind, key, value string) {
+	if value != "" {
+		t.list = append(t.list, Tag{Kind: kind, Key: key, Value: value})
 	}
 }
 
-func (t *tags) prop(prop, content string) {
-	if content != "" {
-		t.b.WriteString(`<meta property="` + esc(prop) + `" content="` + esc(content) + "\">\n")
-	}
-}
+func (t *tags) meta(name, content string) { t.add("name", name, content) }
+func (t *tags) prop(prop, content string) { t.add("property", prop, content) }
+func (t *tags) link(rel, href string)     { t.add("rel", rel, href) }
 
-func (t *tags) link(rel, href string) {
-	if href != "" {
-		t.b.WriteString(`<link rel="` + esc(rel) + `" href="` + esc(href) + "\">\n")
+// write prints the tag escaped. Tags of an unknown kind or with an empty value print nothing.
+func (t Tag) write(b *strings.Builder) {
+	if t.Value == "" {
+		return
+	}
+	switch t.Kind {
+	case "name", "property":
+		b.WriteString(`<meta ` + t.Kind + `="` + esc(t.Key) + `" content="` + esc(t.Value) + "\">\n")
+	case "rel":
+		b.WriteString(`<link rel="` + esc(t.Key) + `" href="` + esc(t.Value) + "\">\n")
 	}
 }
 

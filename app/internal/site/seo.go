@@ -8,6 +8,7 @@ import (
 	"github.com/jackc/pgx/v5"
 
 	"afsc/internal/content"
+	"afsc/internal/plugins"
 	"afsc/internal/seo"
 	"afsc/internal/theme"
 )
@@ -163,6 +164,12 @@ func (st *Site) buildHead(ctx context.Context, snap *snapshot, d *theme.PageData
 	}
 
 	in := seo.Input{Page: d, Settings: s, Location: snap.loc, Now: st.now(), FirstImage: view(first)}
+	if rt := st.cfg.Plugins; rt.HasFilter(plugins.SEOMeta.Name) || rt.HasFilter(plugins.SEOSchemaGraph.Name) {
+		in.MetaFilter = func(m *seo.Meta) *seo.Meta { return plugins.ApplyFilter(ctx, rt, plugins.SEOMeta, m, d) }
+		in.GraphFilter = func(g []map[string]any) []map[string]any {
+			return plugins.ApplyFilter(ctx, rt, plugins.SEOSchemaGraph, g, d)
+		}
+	}
 	if r := s.SEO.DefaultImage; r != nil {
 		in.DefaultImage = view(r.ID)
 	}

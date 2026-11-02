@@ -15,12 +15,17 @@ type CheckResult struct {
 
 // Check loads the theme in dir and renders every template and node partial against fixture data.
 // prepare, when set, fills derived fields such as PageData.Head before each render.
-func Check(dir string, prepare func(*Theme, *PageData)) ([]CheckResult, error) {
+func Check(dir string, prepare func(*Theme, *PageData), extra ...Options) ([]CheckResult, error) {
 	m, err := LoadManifest(dir)
 	if err != nil {
 		return nil, err
 	}
-	t, err := Load(dir, Options{Backend: FixtureBackend(m)})
+	var opts Options
+	if len(extra) > 0 {
+		opts = extra[0]
+	}
+	opts.Dev, opts.OnReload, opts.Backend = false, nil, FixtureBackend(m)
+	t, err := Load(dir, opts)
 	if err != nil {
 		return nil, err
 	}

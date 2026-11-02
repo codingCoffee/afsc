@@ -40,9 +40,13 @@ func runThemeCheck(ctx context.Context, cmd *cli.Command) error {
 	}
 	defaults := settings.Defaults()
 	defaults.Site.Title, defaults.Site.Tagline = "Example Blog", "Just another example site"
+	rt, err := buildPlugins(ctx, nil, "https://blog.example.com", nil)
+	if err != nil {
+		return cli.Exit(fmt.Sprintf("FAIL plugins: %v", err), 1)
+	}
 	results, err := theme.Check(dir, func(t *theme.Theme, d *theme.PageData) {
 		d.Head, _ = seo.Build(seo.Input{Page: d, Settings: &defaults, Crumbs: t.Breadcrumbs(d), Now: time.Now()})
-	})
+	}, themeOptions(rt))
 	if err != nil {
 		return cli.Exit(fmt.Sprintf("FAIL %s: %v", dir, err), 1)
 	}
@@ -72,7 +76,9 @@ func runThemeCheck(ctx context.Context, cmd *cli.Command) error {
 		return fmt.Errorf("invalid AFSC_DATABASE_URL: %w", err)
 	}
 	defer pool.Close()
-	th, err := theme.Load(dir, theme.Options{Backend: &theme.StaticBackend{S: &defaults}})
+	opts := themeOptions(rt)
+	opts.Backend = &theme.StaticBackend{S: &defaults}
+	th, err := theme.Load(dir, opts)
 	if err != nil {
 		return err
 	}

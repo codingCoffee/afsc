@@ -1,5 +1,5 @@
 // Package spam is the comment spam pipeline (§11): hard rules, scored checks, a Bayesian classifier, training and
-// retention. Check is the comment.check filter; it stays a plain call until the M5 plugin system exists.
+// retention. Check is what the built-in spam plugin runs as its comment.check filter.
 package spam
 
 import (
@@ -53,6 +53,17 @@ type Verdict struct {
 func (v *Verdict) add(check string, delta int, detail string) {
 	v.Score += delta
 	v.Reasons = append(v.Reasons, Reason{Check: check, Delta: delta, Detail: detail})
+}
+
+// Merge adds o's score and reasons to v. A hard verdict or ForcePending in either one carries over.
+func (v Verdict) Merge(o Verdict) Verdict {
+	v.Score += o.Score
+	v.Reasons = append(v.Reasons, o.Reasons...)
+	v.ForcePending = v.ForcePending || o.ForcePending
+	if v.Hard == "" {
+		v.Hard = o.Hard
+	}
+	return v
 }
 
 // Check runs the pipeline. Hard rules short-circuit; the rest add score deltas.

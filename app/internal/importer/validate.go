@@ -455,6 +455,9 @@ func (v *validator) posts() error {
 		if !slugRe.MatchString(r.Slug) {
 			v.rep.errorf(key, "slug", "must match %s", slugRe)
 		}
+		if r.Parent == nil && (r.Slug == "_plugins" || r.Slug == "_theme") {
+			v.rep.warnf(key, "slug", "/%s/ is reserved for theme and plugin files; it may be unreachable", r.Slug)
+		}
 		if r.CreatedAt == nil {
 			v.rep.errorf(key, "created_at", "required")
 		}

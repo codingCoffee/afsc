@@ -7,6 +7,7 @@ import (
 	"github.com/labstack/echo/v5"
 
 	"afsc/internal/authz"
+	"afsc/internal/plugins"
 	"afsc/internal/redirects"
 	"afsc/internal/site"
 	"afsc/internal/storage"
@@ -20,12 +21,14 @@ type adminDeps struct {
 	baseURL  string
 	themeDir string
 	dev      bool
+	plugins  *plugins.Runtime
 }
 
 // mountAdmin registers the whole admin JSON API under /admin/api/v1. Tests call it too, so they see the same
 // routes, guards and capabilities as production.
 func mountAdmin(e *echo.Echo, h *authHandler, d *adminDeps, mw ...echo.MiddlewareFunc) *echo.Group {
 	api := e.Group(apiPrefix, mw...)
+	h.plugins = d.plugins
 	h.route(api, http.MethodGet, "/ht", authz.Public, healthHandler(d.pool))
 	h.register(api)
 	h.registerRedirects(api, &redirectHandler{store: &redirects.Store{DB: d.pool, Router: d.site.Router()}, site: d.site})
@@ -35,5 +38,6 @@ func mountAdmin(e *echo.Echo, h *authHandler, d *adminDeps, mw ...echo.Middlewar
 	h.registerSettings(api, d)
 	h.registerSEO(api, d)
 	h.registerComments(api, d)
+	h.registerPluginAdmin(api, d.plugins)
 	return api
 }

@@ -157,6 +157,9 @@ var cspHost = regexp.MustCompile(`^https://(\*\.)?[a-z0-9]([a-z0-9-]*[a-z0-9])?(
 
 const maxSnippetBytes = 64 << 10
 
+// pluginID mirrors plugins.IDPattern; settings can't import the plugins package.
+var pluginID = regexp.MustCompile(`^[a-z][a-z0-9]{1,31}$`)
+
 type Cache struct {
 	PageTTLSeconds int `json:"page_ttl_seconds"`
 }
@@ -174,10 +177,18 @@ type All struct {
 	Snippets   Snippets   `json:"snippets"`
 	// ThemeSettings maps a theme name to its values, so switching themes keeps each theme's settings.
 	ThemeSettings map[string]map[string]any `json:"theme_settings"`
+	Plugins       Plugins                   `json:"plugins"`
+}
+
+// Plugins switches compiled-in plugins on or off and holds their options, both keyed by plugin ID. A plugin
+// missing from Enabled uses its own default. Values are checked against the plugin's declarations by the admin API.
+type Plugins struct {
+	Enabled  map[string]bool           `json:"enabled"`
+	Settings map[string]map[string]any `json:"settings"`
 }
 
 var Keys = []string{"site", "permalinks", "reading", "seo", "discussion", "cache", "media", "security", "snippets",
-	"theme_settings"}
+	"theme_settings", "plugins"}
 
 // TemplateTypes are the page types that have SEO title and description templates (§8.2).
 var TemplateTypes = []string{"post", "page", "category", "tag", "author", "home", "search", "404", "date"}
@@ -211,6 +222,7 @@ func Defaults() All {
 		Media:         Media{MaxImageMB: 20, MaxVideoMB: 500, MaxAudioMB: 50, MaxPDFMB: 50},
 		Security:      Security{ExtraCSPHosts: map[string][]string{}, HSTS: true},
 		ThemeSettings: map[string]map[string]any{},
+		Plugins:       Plugins{Enabled: map[string]bool{}, Settings: map[string]map[string]any{}},
 	}
 }
 
@@ -259,6 +271,8 @@ func (a *All) groupPtr(key string) any {
 		return &a.Snippets
 	case "theme_settings":
 		return &a.ThemeSettings
+	case "plugins":
+		return &a.Plugins
 	}
 	return nil
 }
@@ -305,6 +319,8 @@ func (a All) Group(key string) any {
 		return a.Snippets
 	case "theme_settings":
 		return a.ThemeSettings
+	case "plugins":
+		return a.Plugins
 	}
 	return nil
 }
@@ -434,6 +450,19 @@ func (a All) Validate() error {
 	}
 	if len(a.Snippets.HeadHTML) > maxSnippetBytes || len(a.Snippets.BodyEndHTML) > maxSnippetBytes {
 		bad("snippets: each snippet must be at most 64 KB")
+	}
+	for id := range a.Plugins.Enabled {
+		if !pluginID.MatchString(id) {
+			bad("plugins.enabled: %q is not a plugin id", id)
+		}
+	}
+	for id, vals := range a.Plugins.Settings {
+		if !pluginID.MatchString(id) {
+			bad("plugins.settings: %q is not a plugin id", id)
+		}
+		if len(vals) > 100 {
+			bad("plugins.settings.%s: at most 100 values", id)
+		}
 	}
 
 	if len(errs) > 0 {

@@ -9,6 +9,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"afsc/internal/plugins"
 	"afsc/internal/theme"
 )
 
@@ -32,6 +33,7 @@ func (st *Site) renderPage(r *http.Request, snap *snapshot, res Result, query st
 	if err := st.buildHead(r.Context(), snap, d); err != nil {
 		return nil, err
 	}
+	st.filterContent(r.Context(), d)
 	var buf bytes.Buffer
 	if _, err := st.theme.Page(&buf, d); err != nil {
 		return nil, err
@@ -45,6 +47,13 @@ func (st *Site) renderPage(r *http.Request, snap *snapshot, res Result, query st
 		h.Set("Cache-Control", "private, no-store")
 	}
 	return &response{status: status, header: h, body: buf.Bytes()}, nil
+}
+
+// filterContent runs the content.html plugin filter on the main post of single views.
+func (st *Site) filterContent(ctx context.Context, d *theme.PageData) {
+	if p := d.Post; p != nil && (d.Kind == theme.KindSingle || d.Kind == theme.KindPage || d.Kind == theme.KindFrontPage) {
+		p.ContentHTML = plugins.ApplyFilter(ctx, st.cfg.Plugins, plugins.ContentHTML, p.ContentHTML, d)
+	}
 }
 
 func (st *Site) basePage(snap *snapshot, r *http.Request, kind string) *theme.PageData {

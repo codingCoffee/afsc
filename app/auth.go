@@ -24,6 +24,7 @@ import (
 	"afsc/internal/audit"
 	"afsc/internal/authz"
 	"afsc/internal/db"
+	"afsc/internal/plugins"
 	"afsc/internal/ratelimit"
 )
 
@@ -51,6 +52,7 @@ type authHandler struct {
 	limiter *ratelimit.Limiter
 	caps    map[string]authz.Cap // "METHOD /admin/api/v1/path" → capability, filled by route()
 	now     func() time.Time
+	plugins *plugins.Runtime // receives user.login; may be nil
 }
 
 type userResponse struct {
@@ -270,6 +272,10 @@ func (h *authHandler) startSession(c *echo.Context, status int, user db.User, ac
 	}
 	if err := audit.Write(ctx, h.pool, audit.Entry{Actor: uuid.NullUUID{UUID: user.ID, Valid: true}, Action: action,
 		EntityType: "user", EntityID: user.ID.String(), IP: clientIP(c)}); err != nil {
+		return err
+	}
+	if err := plugins.Emit(ctx, h.plugins, h.pool, plugins.UserLogin,
+		plugins.LoginData{UserID: user.ID, Username: user.Username, Role: user.Role}); err != nil {
 		return err
 	}
 	return h.respondSession(c, status, user, refresh, sessionID, expires)

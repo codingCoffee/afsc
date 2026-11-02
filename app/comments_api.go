@@ -17,6 +17,7 @@ import (
 	"afsc/internal/authz"
 	"afsc/internal/comments"
 	"afsc/internal/jobs"
+	"afsc/internal/plugins"
 	"afsc/internal/spam"
 )
 
@@ -319,6 +320,17 @@ func (a *commentsAPI) putBlocklist(c *echo.Context) error {
 		if err := audit.Write(ctx, tx, audit.Entry{Actor: actor(c), Action: "spam.blocklist", EntityType: "settings",
 			EntityID: "spam_blocklist", Diff: map[string]any{"added": fmtEntries(added), "removed": fmtEntries(removed)},
 			IP: clientIP(c)}); err != nil {
+			return err
+		}
+		var kinds []string
+		for _, e := range slices.Concat(added, removed) {
+			if !slices.Contains(kinds, e.Kind) {
+				kinds = append(kinds, e.Kind)
+			}
+		}
+		slices.Sort(kinds)
+		if err := plugins.Emit(ctx, a.d.plugins, tx, plugins.SettingsChanged,
+			plugins.SettingsData{Group: "spam_blocklist", Fields: kinds}); err != nil {
 			return err
 		}
 	}

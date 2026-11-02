@@ -12,6 +12,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"afsc/internal/plugins"
 	"afsc/internal/settings"
 	"afsc/internal/site"
 	"afsc/internal/spam"
@@ -31,14 +32,14 @@ const (
 	checkTimeout = 2 * time.Second
 )
 
-// CheckFunc is the comment.check filter. M5 replaces the plain spam.Check call with the plugin hook.
+// CheckFunc is the comment.check chain: the plugin runtime's, or plain spam.Check without one.
 type CheckFunc func(ctx context.Context, db spam.Querier, in spam.Input) (spam.Verdict, error)
 
 type Service struct {
 	DB     *pgxpool.Pool
 	Site   *site.Site
 	Signer *spam.Signer
-	Check  CheckFunc // default spam.Check
+	Check  CheckFunc
 	Now    func() time.Time
 	Logf   func(format string, args ...any)
 }
@@ -47,7 +48,13 @@ func New(pool *pgxpool.Pool, st *site.Site, signer *spam.Signer, logf func(strin
 	if logf == nil {
 		logf = func(string, ...any) {}
 	}
-	return &Service{DB: pool, Site: st, Signer: signer, Check: spam.Check, Now: time.Now, Logf: logf}
+	s := &Service{DB: pool, Site: st, Signer: signer, Check: spam.Check, Now: time.Now, Logf: logf}
+	if rt := st.Plugins(); rt.HasFilter(plugins.CommentCheck.Name) {
+		s.Check = func(ctx context.Context, _ spam.Querier, in spam.Input) (spam.Verdict, error) {
+			return rt.CheckComment(ctx, in), nil
+		}
+	}
+	return s
 }
 
 // Input is a public comment submission.
@@ -151,7 +158,11 @@ VALUES ($1, nullif($2::bigint, 0), $3, $4, $5, $6, $7, $8, $9, $10, $11) RETURNI
 			return nil, err
 		}
 	}
-	// comment.created action (M5 hook point)
+	if newStatus != "spam" {
+		if err := s.emitCreated(ctx, tx, res, in.Name); err != nil {
+			return nil, err
+		}
+	}
 	return res, tx.Commit(ctx)
 }
 
@@ -187,6 +198,32 @@ func (s *Service) check(ctx context.Context, in spam.Input) (v spam.Verdict) {
 		s.Logf("comments: spam check timed out")
 		return failed("timeout")
 	}
+}
+
+func (s *Service) emitCreated(ctx context.Context, tx pgx.Tx, res *Result, author string) error {
+	rt := s.Site.Plugins()
+	if rt == nil {
+		return nil
+	}
+	urls, err := s.Site.VisibleURLs(ctx, []int64{res.PostID})
+	if err != nil {
+		return err
+	}
+	d := plugins.CommentData{ID: res.ID, PostID: res.PostID, PostURL: urls[res.PostID], Status: res.Status, AuthorName: author}
+	if res.ParentID != 0 {
+		d.ParentID = &res.ParentID
+	}
+	return plugins.Emit(ctx, rt, tx, plugins.CommentCreated, d)
+}
+
+func (s *Service) emitStatus(ctx context.Context, tx pgx.Tx, changed []Changed) error {
+	for _, c := range changed {
+		if err := plugins.Emit(ctx, s.Site.Plugins(), tx, plugins.CommentStatusChanged,
+			plugins.CommentStatusData{ID: c.ID, PostID: c.PostID, From: c.From, To: c.To}); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (s *Service) rateLimit(ctx context.Context, ip *netip.Addr, email string, now time.Time) error {

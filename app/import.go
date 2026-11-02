@@ -52,7 +52,13 @@ func runImport(ctx context.Context, cmd *cli.Command) error {
 	var parts content.Partials
 	if dir := cmd.String("theme"); dir != "" {
 		defaults := settings.Defaults()
-		th, err := theme.Load(dir, theme.Options{Backend: &theme.StaticBackend{S: &defaults}})
+		rt, err := buildPlugins(ctx, nil, "", nil)
+		if err != nil {
+			return err
+		}
+		opts := themeOptions(rt)
+		opts.Backend = &theme.StaticBackend{S: &defaults}
+		th, err := theme.Load(dir, opts)
 		if err != nil {
 			return err
 		}

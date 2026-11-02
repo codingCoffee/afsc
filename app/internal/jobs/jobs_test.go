@@ -165,6 +165,28 @@ func TestBackoffFailedJobWaits(t *testing.T) {
 	}
 }
 
+func TestPerKindBackoff(t *testing.T) {
+	pool := testPool(t)
+	kind := testKind(t, pool)
+	ctx := context.Background()
+	if err := Enqueue(ctx, pool, kind, nil, time.Time{}); err != nil {
+		t.Fatal(err)
+	}
+	w := &Worker{DB: pool}
+	w.HandleWith(kind, func(context.Context, json.RawMessage) error { return errors.New("later") },
+		Options{Backoff: func(int) time.Duration { return time.Hour }})
+	if ran, err := w.RunOnce(ctx); !ran || err != nil {
+		t.Fatalf("ran %v err %v", ran, err)
+	}
+	var secs float64
+	if err := pool.QueryRow(ctx, `SELECT extract(epoch FROM run_at - now())::float8 FROM jobs WHERE kind = $1`, kind).Scan(&secs); err != nil {
+		t.Fatal(err)
+	}
+	if secs < 3500 || secs > 3600 {
+		t.Errorf("retry in %.0f s, want the kind's 1 h", secs)
+	}
+}
+
 func TestDefaultBackoff(t *testing.T) {
 	for attempt, want := range map[int]time.Duration{1: 10 * time.Second, 2: 20 * time.Second, 4: 80 * time.Second, 20: time.Hour} {
 		for range 50 {

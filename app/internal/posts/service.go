@@ -24,6 +24,7 @@ import (
 	"afsc/internal/content"
 	"afsc/internal/indexnow"
 	"afsc/internal/jobs"
+	"afsc/internal/plugins"
 	"afsc/internal/redirects"
 	"afsc/internal/site"
 )
@@ -214,6 +215,9 @@ func (s *Service) Save(ctx context.Context, a Actor, id int64, in Input, force b
 	}
 	if err := audit.Write(ctx, tx, audit.Entry{Actor: a.ref(), Action: action(cur, after), EntityType: "post",
 		EntityID: strconv.FormatInt(after.ID, 10), Diff: changes(cur, after), IP: a.IP}); err != nil {
+		return nil, err
+	}
+	if err := s.emitChange(ctx, tx, cur, after, true); err != nil {
 		return nil, err
 	}
 	if err := tx.Commit(ctx); err != nil {
@@ -768,6 +772,9 @@ WHERE id = $1 RETURNING version, updated_at`, id).Scan(&after.Version, &after.Up
 		Diff: map[string]audit.Change{"status": {From: "scheduled", To: "published"}}}); err != nil {
 		return false, err
 	}
+	if err := s.emitChange(ctx, tx, cur, &after, false); err != nil {
+		return false, err
+	}
 	if err := tx.Commit(ctx); err != nil {
 		return false, err
 	}
@@ -822,7 +829,8 @@ func (s *Service) Trash(ctx context.Context, a Actor, id int64, gone, target str
 	}
 	after := *cur
 	after.Status = "trash"
-	if _, err := tx.Exec(ctx, `UPDATE posts SET status = 'trash', version = version + 1, updated_at = now() WHERE id = $1`, id); err != nil {
+	if err := tx.QueryRow(ctx, `UPDATE posts SET status = 'trash', version = version + 1, updated_at = now() WHERE id = $1
+RETURNING updated_at`, id).Scan(&after.UpdatedAt); err != nil {
 		return nil, err
 	}
 	seo, err := LoadSEO(ctx, tx, "post", id)
@@ -841,6 +849,9 @@ func (s *Service) Trash(ctx context.Context, a Actor, id int64, gone, target str
 	}
 	if err := audit.Write(ctx, tx, audit.Entry{Actor: a.ref(), Action: "post.trash", EntityType: "post",
 		EntityID: strconv.FormatInt(id, 10), Diff: diff, IP: a.IP}); err != nil {
+		return nil, err
+	}
+	if err := s.emitChange(ctx, tx, cur, &after, false); err != nil {
 		return nil, err
 	}
 	if err := tx.Commit(ctx); err != nil {
@@ -887,11 +898,17 @@ func (s *Service) Restore(ctx context.Context, a Actor, id int64) (*Detail, erro
 	if _, err := canEdit(ctx, tx, a, cur); err != nil {
 		return nil, err
 	}
-	if _, err := tx.Exec(ctx, `UPDATE posts SET status = 'draft', version = version + 1, updated_at = now() WHERE id = $1`, id); err != nil {
+	after := *cur
+	after.Status = "draft"
+	if err := tx.QueryRow(ctx, `UPDATE posts SET status = 'draft', version = version + 1, updated_at = now() WHERE id = $1
+RETURNING updated_at`, id).Scan(&after.UpdatedAt); err != nil {
 		return nil, err
 	}
 	if err := audit.Write(ctx, tx, audit.Entry{Actor: a.ref(), Action: "post.restore", EntityType: "post",
 		EntityID: strconv.FormatInt(id, 10), Diff: map[string]audit.Change{"status": {From: "trash", To: "draft"}}, IP: a.IP}); err != nil {
+		return nil, err
+	}
+	if err := s.emitChange(ctx, tx, cur, &after, true); err != nil {
 		return nil, err
 	}
 	if err := tx.Commit(ctx); err != nil {
@@ -925,6 +942,10 @@ func (s *Service) Delete(ctx context.Context, a Actor, id int64) error {
 	}
 	if err := audit.Write(ctx, tx, audit.Entry{Actor: a.ref(), Action: "post.delete", EntityType: "post",
 		EntityID: strconv.FormatInt(id, 10), Diff: map[string]any{"title": cur.Title, "slug": cur.Slug, "type": cur.Type}, IP: a.IP}); err != nil {
+		return err
+	}
+	if err := plugins.Emit(ctx, s.Site.Plugins(), tx, plugins.PostDeleted,
+		plugins.PostDeletedData{ID: id, Type: cur.Type, Slug: cur.Slug}); err != nil {
 		return err
 	}
 	return tx.Commit(ctx)

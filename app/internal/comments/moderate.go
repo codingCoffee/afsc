@@ -89,7 +89,9 @@ func (s *Service) SetStatus(ctx context.Context, ids []int64, status string) ([]
 			return nil, err
 		}
 	}
-	// comment.status_changed action (M5 hook point)
+	if err := s.emitStatus(ctx, tx, changed); err != nil {
+		return nil, err
+	}
 	return changed, tx.Commit(ctx)
 }
 
@@ -123,6 +125,9 @@ func (s *Service) Delete(ctx context.Context, ids []int64) ([]Changed, error) {
 	if _, err := tx.Exec(ctx, `DELETE FROM comments WHERE id = ANY($1)`, del); err != nil {
 		return nil, err
 	}
+	if err := s.emitStatus(ctx, tx, out); err != nil {
+		return nil, err
+	}
 	return out, tx.Commit(ctx)
 }
 
@@ -149,7 +154,7 @@ func (s *Service) Reply(ctx context.Context, user uuid.UUID, parentID int64, bod
 	}
 	defer tx.Rollback(ctx)
 	res := &Result{PostID: postID, ParentID: pid, Status: "approved"}
-	var email, authorURL string
+	var email, authorURL, name string
 	err = tx.QueryRow(ctx, `
 WITH u AS (
   SELECT u.id, u.email, coalesce(nullif(a.display_name, ''), nullif(u.display_name, ''), u.username) AS name,
@@ -158,7 +163,7 @@ WITH u AS (
 )
 INSERT INTO comments (post_id, parent_id, author_name, author_email, author_url, user_id, body, status)
 SELECT $2::bigint, nullif($3::bigint, 0), u.name, u.email, u.website, u.id, $4::text, 'approved' FROM u
-RETURNING id, author_email, author_url`, user, postID, pid, body).Scan(&res.ID, &email, &authorURL)
+RETURNING id, author_email, author_url, author_name`, user, postID, pid, body).Scan(&res.ID, &email, &authorURL, &name)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, ErrNotFound
 	}
@@ -171,6 +176,8 @@ RETURNING id, author_email, author_url`, user, postID, pid, body).Scan(&res.ID, 
 	if err := s.purge(ctx, tx, []int64{postID}); err != nil {
 		return nil, err
 	}
-	// comment.created action (M5 hook point)
+	if err := s.emitCreated(ctx, tx, res, name); err != nil {
+		return nil, err
+	}
 	return res, tx.Commit(ctx)
 }

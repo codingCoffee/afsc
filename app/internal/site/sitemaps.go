@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"afsc/internal/plugins"
 	"afsc/internal/seo"
 	"afsc/internal/theme"
 )
@@ -416,6 +417,8 @@ func (st *Site) renderSitemap(ctx context.Context, snap *snapshot, res Result) (
 				urls[i].Images = imgs[e.id]
 			}
 		}
+		urls = plugins.ApplyFilter(ctx, st.cfg.Plugins, plugins.SitemapEntries, urls,
+			plugins.SitemapArgs{Type: res.File, Page: res.Paged})
 		body = seo.URLSet(urls)
 	}
 	return &response{status: http.StatusOK, header: http.Header{"Content-Type": {"application/xml; charset=utf-8"}},

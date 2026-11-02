@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"afsc/internal/plugins"
 	"afsc/internal/theme"
 )
 
@@ -91,30 +92,51 @@ func (st *Site) renderFeed(r *http.Request, snap *snapshot, res Result) (*respon
 	b.WriteString("<language>" + xmlText(s.Site.Language) + "</language>\n")
 
 	for _, row := range rows {
-		p := row.view
-		b.WriteString("<item>\n<title>" + xmlText(p.Title) + "</title>\n<link>" + xmlText(p.URL) + "</link>\n")
-		for _, a := range p.Authors {
-			b.WriteString("<dc:creator>" + cdata(a.Name) + "</dc:creator>\n")
+		it := feedItem(row.view, s.Reading.FeedExcerptOnly)
+		it = plugins.ApplyFilter(r.Context(), st.cfg.Plugins, plugins.FeedItemFilter, it, row.view)
+		if it != nil {
+			writeFeedItem(&b, it)
 		}
-		b.WriteString("<pubDate>" + rssDate(p.PublishedAt) + "</pubDate>\n")
-		for _, t := range slices.Concat(p.Categories, p.Tags) {
-			b.WriteString("<category>" + cdata(t.Name) + "</category>\n")
-		}
-		if p.FeedGUID != "" {
-			b.WriteString(`<guid isPermaLink="false">` + xmlText(p.FeedGUID) + "</guid>\n")
-		} else {
-			b.WriteString(`<guid isPermaLink="true">` + xmlText(p.URL) + "</guid>\n")
-		}
-		excerpt := feedExcerpt(p)
-		b.WriteString("<description>" + cdata(excerpt) + "</description>\n")
-		body := string(p.ContentHTML)
-		if s.Reading.FeedExcerptOnly {
-			body = "<p>" + html.EscapeString(excerpt) + "</p>"
-		}
-		b.WriteString("<content:encoded>" + cdata(body) + "</content:encoded>\n</item>\n")
 	}
 	b.WriteString("</channel>\n</rss>\n")
 
 	return &response{status: http.StatusOK, header: http.Header{"Content-Type": {"application/rss+xml; charset=UTF-8"}},
 		body: b.Bytes()}, nil
+}
+
+// feedItem is the RSS item for p before the feed.item plugin filter.
+func feedItem(p *theme.Post, excerptOnly bool) *plugins.FeedItem {
+	it := &plugins.FeedItem{Title: p.Title, Link: p.URL, GUID: p.FeedGUID, PubDate: p.PublishedAt,
+		Description: feedExcerpt(p), ContentHTML: string(p.ContentHTML)}
+	if it.GUID == "" {
+		it.GUID, it.GUIDIsPermaLink = p.URL, true
+	}
+	for _, a := range p.Authors {
+		it.Creators = append(it.Creators, a.Name)
+	}
+	for _, t := range slices.Concat(p.Categories, p.Tags) {
+		it.Categories = append(it.Categories, t.Name)
+	}
+	if excerptOnly {
+		it.ContentHTML = "<p>" + html.EscapeString(it.Description) + "</p>"
+	}
+	return it
+}
+
+func writeFeedItem(b *bytes.Buffer, it *plugins.FeedItem) {
+	b.WriteString("<item>\n<title>" + xmlText(it.Title) + "</title>\n<link>" + xmlText(it.Link) + "</link>\n")
+	for _, c := range it.Creators {
+		b.WriteString("<dc:creator>" + cdata(c) + "</dc:creator>\n")
+	}
+	b.WriteString("<pubDate>" + rssDate(it.PubDate) + "</pubDate>\n")
+	for _, c := range it.Categories {
+		b.WriteString("<category>" + cdata(c) + "</category>\n")
+	}
+	perma := "false"
+	if it.GUIDIsPermaLink {
+		perma = "true"
+	}
+	b.WriteString(`<guid isPermaLink="` + perma + `">` + xmlText(it.GUID) + "</guid>\n")
+	b.WriteString("<description>" + cdata(it.Description) + "</description>\n")
+	b.WriteString("<content:encoded>" + cdata(it.ContentHTML) + "</content:encoded>\n</item>\n")
 }

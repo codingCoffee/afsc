@@ -2,6 +2,7 @@ package media
 
 import (
 	"context"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"net/http"
@@ -17,6 +18,7 @@ import (
 
 	"afsc/internal/audit"
 	"afsc/internal/content"
+	"afsc/internal/plugins"
 	"afsc/internal/storage"
 )
 
@@ -26,6 +28,8 @@ type Admin struct {
 	Storage storage.Manager
 	Images  func() *content.ImageSizes // the active theme's sizes, for thumbnail URLs; may return nil
 	Logf    func(format string, args ...any)
+	Plugins *plugins.Runtime // receives media.uploaded; may be nil
+	BaseURL string
 }
 
 func (a *Admin) logf(format string, args ...any) {
@@ -325,6 +329,13 @@ func (a *Admin) Create(ctx context.Context, up Upload, act Actor) (*Item, bool, 
 	}
 	if err == nil {
 		err = act.audit(ctx, tx, "media.upload", id, map[string]any{"filename": o.Filename, "mime": o.Mime, "bytes": o.Bytes})
+	}
+	if err == nil {
+		info := content.MediaInfo{ID: id, Filename: o.Filename, Version: hex.EncodeToString(o.SHA256)[:8], Mime: o.Mime,
+			Width: o.Width, Height: o.Height}
+		err = plugins.Emit(ctx, a.Plugins, tx, plugins.MediaUploaded, plugins.MediaData{ID: id, Mime: o.Mime,
+			URL: a.BaseURL + content.MediaURL(info, "orig"), Width: nullInt(o.Width), Height: nullInt(o.Height),
+			Filename: o.Filename})
 	}
 	if err == nil {
 		err = tx.Commit(ctx)

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"slices"
 	"sync"
 	"time"
 
@@ -15,6 +16,7 @@ import (
 
 	"afsc/internal/indexnow"
 	"afsc/internal/jobs"
+	"afsc/internal/plugins"
 	"afsc/internal/posts"
 	"afsc/internal/ratelimit"
 	"afsc/internal/settings"
@@ -52,17 +54,25 @@ func runWorker(ctx context.Context, cmd *cli.Command) error {
 	if err != nil {
 		return err
 	}
+	secret := os.Getenv("AFSC_JWT_SECRET")
+	if len(secret) < 32 {
+		return errors.New("AFSC_JWT_SECRET must be set and at least 32 bytes long (plugins derive keys from it)")
+	}
 	themeDir := os.Getenv("AFSC_THEME_DIR")
 	if themeDir == "" {
 		return errors.New("AFSC_THEME_DIR is not set")
 	}
-	pub, err := site.New(ctx, site.Config{Pool: pool, BaseURL: baseURL, ThemeDir: themeDir, Logf: log.Printf})
+	rt, err := buildPlugins(ctx, pool, baseURL, []byte(secret))
+	if err != nil {
+		return err
+	}
+	pub, err := site.New(ctx, site.Config{Pool: pool, BaseURL: baseURL, ThemeDir: themeDir, Logf: log.Printf, Plugins: rt})
 	if err != nil {
 		return err
 	}
 	var wg sync.WaitGroup
 	wg.Go(func() { pub.Run(ctx) })
-	newJobsRunner(pool, pub, baseURL, n).run(ctx)
+	newJobsRunner(pool, pub, baseURL, n, rt).run(ctx)
 	wg.Wait()
 	return nil
 }
@@ -83,10 +93,10 @@ type jobsRunner struct {
 	pinger    *indexnow.Pinger
 }
 
-func newJobsRunner(pool *pgxpool.Pool, pub *site.Site, baseURL string, concurrency int) *jobsRunner {
+func newJobsRunner(pool *pgxpool.Pool, pub *site.Site, baseURL string, concurrency int, rt *plugins.Runtime) *jobsRunner {
 	r := &jobsRunner{
 		worker:    &jobs.Worker{DB: pool, Concurrency: concurrency, Logf: log.Printf},
-		scheduler: &jobs.Scheduler{DB: pool, Schedules: jobsSchedules, Logf: log.Printf},
+		scheduler: &jobs.Scheduler{DB: pool, Schedules: slices.Concat(jobsSchedules, rt.Schedules()), Logf: log.Printf},
 		pinger: &indexnow.Pinger{BaseURL: baseURL,
 			Settings: func() settings.IndexNow { return pub.Settings().SEO.IndexNow }},
 	}
@@ -120,6 +130,9 @@ func newJobsRunner(pool *pgxpool.Pool, pub *site.Site, baseURL string, concurren
 		return err
 	})
 	r.worker.Handle(indexnow.Kind, func(ctx context.Context, p json.RawMessage) error { return r.pinger.Handle(ctx, p) })
+	for kind, j := range rt.Jobs() {
+		r.worker.HandleWith(kind, j.Handler, j.Options)
+	}
 	return r
 }
 

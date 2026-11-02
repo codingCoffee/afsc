@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
-	"net/netip"
 	"slices"
 	"testing"
 
@@ -52,19 +51,5 @@ func TestHandle(t *testing.T) {
 	calls = 0
 	if err := p.Handle(ctx, payload); err != nil || calls != 0 {
 		t.Errorf("disabled: err %v, calls %d", err, calls)
-	}
-}
-
-func TestSafeClientRefusesPrivateAddresses(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
-	defer srv.Close()
-	if _, err := SafeClient().Get(srv.URL); err == nil {
-		t.Error("loopback request succeeded")
-	}
-	for addr, want := range map[string]bool{"8.8.8.8": true, "10.0.0.1": false, "127.0.0.1": false, "169.254.169.254": false,
-		"100.64.1.1": false, "::1": false, "fd00::1": false, "2606:4700::1111": true, "::ffff:10.0.0.1": false} {
-		if got := public(netip.MustParseAddr(addr)); got != want {
-			t.Errorf("public(%s) = %v", addr, got)
-		}
 	}
 }

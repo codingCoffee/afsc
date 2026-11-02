@@ -16,6 +16,7 @@ import (
 
 	"afsc/internal/audit"
 	"afsc/internal/authz"
+	"afsc/internal/plugins"
 	"afsc/internal/settings"
 	"afsc/internal/site"
 )
@@ -71,6 +72,7 @@ func (s *settingsAPI) get(c *echo.Context) error {
 	return c.JSON(http.StatusOK, map[string]any{
 		"values":          values,
 		"theme":           map[string]any{"name": m.Name, "settings": decls},
+		"plugins":         s.d.plugins.List(),
 		"csp_report_only": all.Security.CSPReportOnly,
 	})
 }
@@ -116,6 +118,11 @@ func (s *settingsAPI) put(c *echo.Context) error {
 			return fieldError(c, http.StatusBadRequest, field, msg)
 		}
 	}
+	if group == "plugins" {
+		if field, msg := s.d.plugins.ValidateSettings(next.Plugins); field != "" {
+			return fieldError(c, http.StatusBadRequest, field, msg)
+		}
+	}
 	value := next.Group(group)
 	b, err := json.Marshal(value)
 	if err != nil {
@@ -131,6 +138,10 @@ func (s *settingsAPI) put(c *echo.Context) error {
 	if len(diff) > 0 {
 		if err := audit.Write(ctx, tx, audit.Entry{Actor: actor(c), Action: "settings.update", EntityType: "settings",
 			EntityID: group, Diff: diff, IP: clientIP(c)}); err != nil {
+			return err
+		}
+		if err := plugins.Emit(ctx, s.d.plugins, tx, plugins.SettingsChanged,
+			plugins.SettingsData{Group: group, Fields: slices.Sorted(maps.Keys(diff))}); err != nil {
 			return err
 		}
 	}

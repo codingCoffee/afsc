@@ -203,9 +203,87 @@ export interface ThemeSettingDecl {
   options?: string[]
 }
 
+export interface PluginSettingDecl extends ThemeSettingDecl {
+  help?: string
+  min?: number
+  max?: number
+}
+
+export interface PluginListing {
+  id: string
+  name: string
+  description: string
+  always_on: boolean
+  default_enabled: boolean
+  settings: PluginSettingDecl[]
+}
+
+export type WebhookDeliveryStatus = 'pending' | 'succeeded' | 'failed' | 'cancelled'
+
+export interface WebhookEvent {
+  name: string
+  description: string
+}
+
+export interface WebhookEndpoint {
+  id: number
+  url: string
+  description: string
+  events: string[]
+  enabled: boolean
+  secret_hint: string
+  secret_unreadable: boolean // stored with another AFSC_JWT_SECRET; rotate it
+  last_status: WebhookDeliveryStatus | null
+  failures_24h: number
+  created_at: string
+  updated_at: string
+}
+
+export interface WebhookEndpointInput {
+  url: string
+  description: string
+  events: string[]
+  enabled: boolean
+}
+
+// create and rotate are the only responses that carry the secret
+export interface WebhookSecret {
+  endpoint: WebhookEndpoint
+  secret: string
+}
+
+export interface WebhookDelivery {
+  id: number
+  endpoint_id: number
+  endpoint_url: string
+  event_id: string
+  event: string
+  status: WebhookDeliveryStatus
+  attempts: number
+  last_status_code: number | null
+  last_error: string | null
+  duration_ms: number | null
+  redelivery_of: number | null
+  created_at: string
+  completed_at: string | null
+}
+
+export interface WebhookDeliveryDetail extends WebhookDelivery {
+  payload: unknown
+  request_headers: Record<string, string>
+  response_snippet: string | null
+}
+
+// the "plugins" settings group
+export interface PluginsValue {
+  enabled: Record<string, boolean>
+  settings: Record<string, Record<string, unknown>>
+}
+
 export interface SettingsResponse {
   values: Record<string, unknown>
   theme: { name: string, settings: ThemeSettingDecl[] }
+  plugins: PluginListing[]
   csp_report_only: boolean
 }
 

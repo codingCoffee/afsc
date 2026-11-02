@@ -5,7 +5,9 @@ import (
 	"embed"
 	"errors"
 	"fmt"
+	"io/fs"
 	"log"
+	"net/url"
 	"os"
 	"strconv"
 	"strings"
@@ -15,10 +17,14 @@ import (
 	"github.com/golang-migrate/migrate/v4/source"
 	"github.com/golang-migrate/migrate/v4/source/iofs"
 	"github.com/urfave/cli/v3"
+
+	"afsc/internal/plugins"
 )
 
 //go:embed db/migrations/*.sql
 var migrationsFS embed.FS
+
+var pluginFlag = &cli.StringFlag{Name: "plugin", Usage: "only this plugin's migrations"}
 
 func migrateCmd() *cli.Command {
 	return &cli.Command{
@@ -27,21 +33,23 @@ func migrateCmd() *cli.Command {
 		Commands: []*cli.Command{
 			{
 				Name:      "up",
-				Usage:     "apply all migrations, or up to and including [version]",
+				Usage:     "apply all core and plugin migrations, or core (or --plugin) up to and including [version]",
 				ArgsUsage: "[version]",
-				Action:    func(ctx context.Context, cmd *cli.Command) error { return migrateAction(cmd, true) },
+				Flags:     []cli.Flag{pluginFlag},
+				Action:    func(ctx context.Context, cmd *cli.Command) error { return migrateAction(ctx, cmd, true) },
 			},
 			{
 				Name:      "down",
-				Usage:     "revert all migrations, or down to [version] (exclusive)",
+				Usage:     "revert all core migrations (or --plugin's), or down to [version] (exclusive)",
 				ArgsUsage: "[version]",
-				Action:    func(ctx context.Context, cmd *cli.Command) error { return migrateAction(cmd, false) },
+				Flags:     []cli.Flag{pluginFlag},
+				Action:    func(ctx context.Context, cmd *cli.Command) error { return migrateAction(ctx, cmd, false) },
 			},
 		},
 	}
 }
 
-func migrateAction(cmd *cli.Command, up bool) error {
+func migrateAction(ctx context.Context, cmd *cli.Command, up bool) error {
 	var target *uint
 	if arg := cmd.Args().First(); arg != "" {
 		v, err := strconv.ParseUint(arg, 10, 64)
@@ -51,13 +59,59 @@ func migrateAction(cmd *cli.Command, up bool) error {
 		t := uint(v)
 		target = &t
 	}
-	return runMigrations(target, up)
+	if id := cmd.String("plugin"); id != "" {
+		m, err := pluginMigrations(ctx, id)
+		if err != nil {
+			return err
+		}
+		return runMigrationSet("plugin "+id, m.FS, ".", m.VersionTable(), target, up)
+	}
+	if !up || target != nil {
+		return runMigrations(target, up)
+	}
+	return runAllMigrations(ctx)
 }
 
+// runAllMigrations applies every core migration, then each plugin's in registry order.
+func runAllMigrations(ctx context.Context) error {
+	if err := runMigrations(nil, true); err != nil {
+		return err
+	}
+	rt, err := buildPlugins(ctx, nil, "", nil)
+	if err != nil {
+		return err
+	}
+	for _, m := range rt.Migrations() {
+		if err := runMigrationSet("plugin "+m.Plugin, m.FS, ".", m.VersionTable(), nil, true); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func pluginMigrations(ctx context.Context, id string) (plugins.Migrations, error) {
+	rt, err := buildPlugins(ctx, nil, "", nil)
+	if err != nil {
+		return plugins.Migrations{}, err
+	}
+	for _, m := range rt.Migrations() {
+		if m.Plugin == id {
+			return m, nil
+		}
+	}
+	return plugins.Migrations{}, fmt.Errorf("plugin %q has no migrations", id)
+}
+
+// runMigrations applies or reverts the core migrations.
 func runMigrations(target *uint, up bool) error {
+	return runMigrationSet("core", migrationsFS, "db/migrations", "", target, up)
+}
+
+// migrateURL turns AFSC_DATABASE_URL into a golang-migrate pgx5 URL; table selects the version table.
+func migrateURL(table string) (string, error) {
 	dbURL := os.Getenv("AFSC_DATABASE_URL")
 	if dbURL == "" {
-		return errors.New("AFSC_DATABASE_URL is not set")
+		return "", errors.New("AFSC_DATABASE_URL is not set")
 	}
 	for _, prefix := range []string{"postgres://", "postgresql://"} {
 		if strings.HasPrefix(dbURL, prefix) {
@@ -65,10 +119,27 @@ func runMigrations(target *uint, up bool) error {
 			break
 		}
 	}
-
-	src, err := iofs.New(migrationsFS, "db/migrations")
+	if table == "" {
+		return dbURL, nil
+	}
+	u, err := url.Parse(dbURL)
 	if err != nil {
-		return fmt.Errorf("failed to open migrations: %w", err)
+		return "", errors.New("AFSC_DATABASE_URL is not a URL")
+	}
+	q := u.Query()
+	q.Set("x-migrations-table", table)
+	u.RawQuery = q.Encode()
+	return u.String(), nil
+}
+
+func runMigrationSet(label string, fsys fs.FS, dir, table string, target *uint, up bool) error {
+	dbURL, err := migrateURL(table)
+	if err != nil {
+		return err
+	}
+	src, err := iofs.New(fsys, dir)
+	if err != nil {
+		return fmt.Errorf("%s: failed to open migrations: %w", label, err)
 	}
 	m, err := migrate.NewWithSourceInstance("iofs", src, dbURL)
 	if err != nil {
@@ -77,9 +148,9 @@ func runMigrations(target *uint, up bool) error {
 	defer m.Close()
 
 	if target != nil && *target > 0 && !versionExists(src, *target) {
-		return fmt.Errorf("migration %04d does not exist", *target)
+		return fmt.Errorf("%s: migration %04d does not exist", label, *target)
 	}
-
+	log.Printf("Migrations: %s", label)
 	if up {
 		return migrateUp(m, src, target)
 	}

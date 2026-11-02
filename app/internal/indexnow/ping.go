@@ -5,16 +5,12 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
-	"net"
 	"net/http"
-	"net/netip"
 	"net/url"
-	"syscall"
-	"time"
 
+	"afsc/internal/safehttp"
 	"afsc/internal/settings"
 )
 
@@ -32,7 +28,7 @@ type Payload struct {
 type Pinger struct {
 	BaseURL  string
 	Settings func() settings.IndexNow
-	Client   *http.Client // nil means SafeClient()
+	Client   *http.Client // nil means a safehttp client following up to 3 redirects
 	Endpoint string       // tests only; default Endpoint
 }
 
@@ -66,7 +62,7 @@ func (p *Pinger) Handle(ctx context.Context, raw json.RawMessage) error {
 		endpoint = Endpoint
 	}
 	if client == nil {
-		client = SafeClient()
+		client = safehttp.Client(safehttp.Options{MaxRedirects: 3})
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(body))
 	if err != nil {
@@ -84,33 +80,3 @@ func (p *Pinger) Handle(ctx context.Context, raw json.RawMessage) error {
 	}
 	return nil
 }
-
-var errPrivate = errors.New("indexnow: refusing to connect to a non-public address")
-
-// SafeClient talks only to public addresses (checked at dial time, so redirects and DNS answers are covered), gives
-// up after 10 s and follows at most 3 redirects.
-func SafeClient() *http.Client {
-	d := &net.Dialer{Timeout: 5 * time.Second, Control: func(_, address string, _ syscall.RawConn) error {
-		ap, err := netip.ParseAddrPort(address)
-		if err != nil || !public(ap.Addr()) {
-			return errPrivate
-		}
-		return nil
-	}}
-	tr := &http.Transport{DialContext: d.DialContext, TLSHandshakeTimeout: 5 * time.Second, MaxIdleConns: 2,
-		IdleConnTimeout: 30 * time.Second, ForceAttemptHTTP2: true}
-	return &http.Client{Transport: tr, Timeout: 10 * time.Second, CheckRedirect: func(r *http.Request, via []*http.Request) error {
-		if len(via) >= 3 || r.URL.Scheme != "https" {
-			return errors.New("indexnow: redirect refused")
-		}
-		return nil
-	}}
-}
-
-func public(a netip.Addr) bool {
-	a = a.Unmap()
-	return a.IsGlobalUnicast() && !a.IsPrivate() && !a.IsLoopback() && !a.IsLinkLocalUnicast() &&
-		!cgnat.Contains(a)
-}
-
-var cgnat = netip.MustParsePrefix("100.64.0.0/10")

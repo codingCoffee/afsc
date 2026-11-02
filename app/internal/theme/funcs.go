@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"html/template"
+	"maps"
 	"path"
 	"slices"
 	"strconv"
@@ -16,6 +17,13 @@ import (
 )
 
 func (t *Theme) funcMap(st *state) template.FuncMap {
+	fm := template.FuncMap{}
+	maps.Copy(fm, t.opts.Funcs)
+	maps.Copy(fm, t.coreFuncs(st))
+	return fm
+}
+
+func (t *Theme) coreFuncs(st *state) template.FuncMap {
 	return template.FuncMap{
 		"head":          t.head(st),
 		"footer":        t.footer,
@@ -391,13 +399,20 @@ func (t *Theme) head(st *state) func(d *PageData) (template.HTML, error) {
 		if err != nil {
 			return "", err
 		}
+		if t.opts.HeadFilter != nil {
+			h = t.opts.HeadFilter(d, h)
+		}
 		return h + template.HTML(t.opts.Backend.Settings().Snippets.HeadHTML), nil
 	}
 }
 
-// footer prints the admin's body-end snippet; themes call it right before </body>.
+// footer prints plugin body.end output and the admin's body-end snippet; themes call it right before </body>.
 func (t *Theme) footer(d *PageData) template.HTML {
-	return template.HTML(t.opts.Backend.Settings().Snippets.BodyEndHTML)
+	var h template.HTML
+	if t.opts.BodyFilter != nil {
+		h = t.opts.BodyFilter(d, h)
+	}
+	return h + template.HTML(t.opts.Backend.Settings().Snippets.BodyEndHTML)
 }
 
 // headTags prints the title, SEO tags, theme assets and feed links. Without resolved SEO it prints a bare title.

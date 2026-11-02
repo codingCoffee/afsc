@@ -23,6 +23,7 @@ import (
 
 	"afsc/internal/comments"
 	"afsc/internal/imgproxy"
+	"afsc/internal/plugins"
 	"afsc/internal/site"
 	"afsc/internal/spam"
 	"afsc/internal/storage"
@@ -51,7 +52,7 @@ func serveCmd() *cli.Command {
 
 func serve(ctx context.Context, cmd *cli.Command) error {
 	if cmd.Bool("migrate") {
-		if err := runMigrations(nil, true); err != nil {
+		if err := runAllMigrations(ctx); err != nil {
 			return fmt.Errorf("migrate up: %w", err)
 		}
 	}
@@ -120,9 +121,13 @@ func serve(ctx context.Context, cmd *cli.Command) error {
 	if err != nil {
 		return err
 	}
+	rt, err := buildPlugins(ctx, pool, baseURL, []byte(secret))
+	if err != nil {
+		return err
+	}
 	pub, err := site.New(ctx, site.Config{Pool: pool, BaseURL: baseURL, ThemeDir: themeDir, Dev: dev, Logf: log.Printf,
 		Storage: store, Imgproxy: imgproxy.New(ipcfg), CacheBytes: int64(cacheMB) << 20, PreviewKey: previewKey,
-		CommentSigner: commentSigner})
+		CommentSigner: commentSigner, Plugins: rt})
 	if err != nil {
 		return err
 	}
@@ -140,7 +145,7 @@ func serve(ctx context.Context, cmd *cli.Command) error {
 		jobsCtx, stopJobs := context.WithCancel(ctx)
 		jobsDone := make(chan struct{})
 		go func() {
-			newJobsRunner(pool, pub, baseURL, jobConcurrency).run(jobsCtx)
+			newJobsRunner(pool, pub, baseURL, jobConcurrency, rt).run(jobsCtx)
 			close(jobsDone)
 		}()
 		defer func() {
@@ -203,6 +208,10 @@ func serve(ctx context.Context, cmd *cli.Command) error {
 		e.GET(path, public)
 		e.HEAD(path, public)
 	}
+	plg := pluginPublic(rt, pub.SecurityHeaders)
+	e.GET(plugins.PublicPrefix+"*", plg)
+	e.HEAD(plugins.PublicPrefix+"*", plg)
+	e.POST(plugins.PublicPrefix+"*", plg)
 	e.POST(site.CommentsPath, postComment(comments.New(pool, pub, commentSigner, log.Printf), pub, baseURL),
 		clientIPMiddleware(trusted))
 
@@ -214,7 +223,8 @@ func serve(ctx context.Context, cmd *cli.Command) error {
 		strictPasswords: !dev,
 		baseURL:         baseURL,
 	})
-	mountAdmin(e, auth, &adminDeps{pool: pool, site: pub, storage: store, baseURL: baseURL, themeDir: themeDir, dev: dev},
+	mountAdmin(e, auth, &adminDeps{pool: pool, site: pub, storage: store, baseURL: baseURL, themeDir: themeDir, dev: dev,
+		plugins: rt},
 		clientIPMiddleware(trusted), adminHeaders(apiCSP))
 
 	addr := net.JoinHostPort(cmd.String("api-host"), strconv.Itoa(cmd.Int("api-port")))

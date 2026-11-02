@@ -16,8 +16,10 @@ import (
 	"afsc/internal/authz"
 	"afsc/internal/db"
 	"afsc/internal/importer"
+	"afsc/internal/plugins"
 	"afsc/internal/site"
 	"afsc/internal/theme"
+	registry "afsc/plugins"
 )
 
 const testOrigin = "https://blog.example.com"
@@ -67,14 +69,21 @@ func newAdminEnv(t *testing.T) *adminEnv {
 	t.Helper()
 	pool := testPool(t)
 	ctx := context.Background()
-	pub, err := site.New(ctx, site.Config{Pool: pool, BaseURL: testOrigin, ThemeDir: "themes/default", Logf: t.Logf})
+	rt, err := plugins.Build(ctx, plugins.Config{DB: pool, BaseURL: testOrigin, Secret: []byte(strings.Repeat("k", 32)), Logf: t.Logf},
+		append(registry.All(), adminTestPlugin{}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	pub, err := site.New(ctx, site.Config{Pool: pool, BaseURL: testOrigin, ThemeDir: "themes/default", Logf: t.Logf,
+		Plugins: rt})
 	if err != nil {
 		t.Fatal(err)
 	}
 	h := newAuthHandler(pool, authConfig{secret: []byte(strings.Repeat("k", 32)), accessTTL: time.Minute,
 		refreshTTL: 7 * 24 * time.Hour, idleTTL: 12 * time.Hour, baseURL: testOrigin})
 	e := echo.New()
-	deps := &adminDeps{pool: pool, site: pub, storage: discardStorage{}, baseURL: testOrigin, themeDir: "themes/default"}
+	deps := &adminDeps{pool: pool, site: pub, storage: discardStorage{}, baseURL: testOrigin, themeDir: "themes/default",
+		plugins: rt}
 	mountAdmin(e, h, deps, clientIPMiddleware(nil))
 
 	env := &adminEnv{t: t, api: apiClient{t: t, e: e, origin: testOrigin}, h: h, pool: pool, site: pub, deps: deps,
@@ -89,6 +98,7 @@ func newAdminEnv(t *testing.T) *adminEnv {
 			`DELETE FROM users WHERE username LIKE '%-` + env.suffix + `'`,
 			`DELETE FROM login_failures WHERE key LIKE '%` + env.suffix + `%'`,
 			`DELETE FROM login_lockouts WHERE key LIKE '%` + env.suffix + `%'`,
+			`DELETE FROM jobs WHERE kind = 'plugins.action' AND payload->>'plugin' IN ('testadmin', 'webhooks')`,
 		} {
 			if _, err := pool.Exec(ctx, sql); err != nil {
 				t.Error(err)

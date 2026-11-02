@@ -137,6 +137,7 @@ func (st *Site) previewPage(r *http.Request, snap *snapshot, d *theme.PageData, 
 	if err := st.buildHead(r.Context(), snap, d); err != nil {
 		return nil, err
 	}
+	st.filterContent(r.Context(), d)
 	var buf bytes.Buffer
 	if _, err := st.theme.Page(&buf, d); err != nil {
 		return nil, err
