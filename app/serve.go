@@ -219,7 +219,12 @@ func serve(ctx context.Context, cmd *cli.Command) error {
 			Skipper: func(c *echo.Context) bool {
 				p := c.Request().URL.Path
 				isAdmin := p == "/admin" || strings.HasPrefix(p, "/admin/")
-				return !isAdmin || strings.HasPrefix(p, "/admin/api/")
+				if !isAdmin || strings.HasPrefix(p, "/admin/api/") {
+					return true
+				}
+				// Vite rejects unknown Host headers, so Nuxt always sees its own address.
+				c.Request().Host = target.Host
+				return false
 			},
 		}))
 	}
