@@ -57,7 +57,7 @@ func runWorker(ctx context.Context, cmd *cli.Command) error {
 		return fmt.Errorf("invalid AFSC_DATABASE_URL: %w", err)
 	}
 	defer pool.Close()
-	baseURL, err := publicBaseURL()
+	baseURL, basePath, err := publicURLs()
 	if err != nil {
 		return err
 	}
@@ -80,7 +80,7 @@ func runWorker(ctx context.Context, cmd *cli.Command) error {
 	if err := requireMigrations(ctx, pool, sets); err != nil {
 		return err
 	}
-	pub, err := site.New(ctx, site.Config{Pool: pool, BaseURL: baseURL, ThemeDir: themeDir, Logf: log.Printf, Plugins: rt})
+	pub, err := site.New(ctx, site.Config{Pool: pool, BaseURL: baseURL + basePath, ThemeDir: themeDir, Logf: log.Printf, Plugins: rt})
 	if err != nil {
 		return err
 	}
