@@ -1,0 +1,21 @@
+{
+  "source": "wpfx",
+  "work_dir": "../.fixture-run/work",
+  "reports_dir": "../.fixture-run/reports",
+  "baseline_dir": "../.fixture-run/baseline",
+  "bundle_dir": "../.fixture-run/bundle",
+  "decisions_file": "decisions.fixture.json",
+  "mysql": {"dsn_env": "AFSC_WP_TEST_MYSQL_DSN", "table_prefix": "wp_"},
+  "uploads_dir": "uploads",
+  "uploads_url_path": "/wp-content/uploads",
+  "site": {"base_url": "https://blog.example.com", "old_hosts": ["old.example.com"], "language": "en"},
+  "content_selector": ".entry-content",
+  "wp_code_dirs": ["wp-code/acme"],
+  "theme_dir": "../../../app/themes/default",
+  "filter": {"replay_file": "filter-golden.ndjson"},
+  "afsc": {"command": ["go", "-C", "../../app", "run", "."], "target_base_url": "http://localhost:1381"},
+  "crawl": {"base_url": "http://localhost:8080", "delay_ms": 200},
+  "plugins": {
+    "guest_author": {"mode": "join", "keys": {"name": "guest_author_name", "email": "guest_author_email", "url": "guest_author_url"}}
+  }
+}

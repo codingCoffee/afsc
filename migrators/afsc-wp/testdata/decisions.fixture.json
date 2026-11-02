@@ -1,0 +1,300 @@
+{
+  "version": 1,
+  "items": [
+    {
+      "id": "block:acme/opening-hours",
+      "kind": "block",
+      "name": "acme/opening-hours",
+      "count": 1,
+      "allowed": [],
+      "proposed": "raw_html",
+      "decision": "raw_html",
+      "status": "confirmed"
+    },
+    {
+      "id": "block:core/embed",
+      "kind": "block",
+      "name": "core/embed",
+      "count": 1,
+      "allowed": [],
+      "proposed": "convert",
+      "decision": "convert",
+      "status": "confirmed"
+    },
+    {
+      "id": "block:core/heading",
+      "kind": "block",
+      "name": "core/heading",
+      "count": 1,
+      "allowed": [],
+      "proposed": "convert",
+      "decision": "convert",
+      "status": "confirmed"
+    },
+    {
+      "id": "block:core/html",
+      "kind": "block",
+      "name": "core/html",
+      "count": 1,
+      "allowed": [],
+      "proposed": "convert",
+      "decision": "convert",
+      "status": "confirmed"
+    },
+    {
+      "id": "block:core/image",
+      "kind": "block",
+      "name": "core/image",
+      "count": 1,
+      "allowed": [],
+      "proposed": "convert",
+      "decision": "convert",
+      "status": "confirmed"
+    },
+    {
+      "id": "block:core/paragraph",
+      "kind": "block",
+      "name": "core/paragraph",
+      "count": 1,
+      "allowed": [],
+      "proposed": "convert",
+      "decision": "convert",
+      "status": "confirmed"
+    },
+    {
+      "id": "element:script",
+      "kind": "element",
+      "name": "script",
+      "count": 1,
+      "allowed": [],
+      "proposed": "raw_html",
+      "decision": "raw_html",
+      "status": "confirmed"
+    },
+    {
+      "id": "empty_paragraphs:empty_paragraphs",
+      "kind": "empty_paragraphs",
+      "name": "empty_paragraphs",
+      "count": 1,
+      "allowed": [],
+      "proposed": "drop",
+      "decision": "drop",
+      "status": "confirmed"
+    },
+    {
+      "id": "iframe_host:forms.example.org",
+      "kind": "iframe_host",
+      "name": "forms.example.org",
+      "count": 1,
+      "allowed": [],
+      "proposed": "raw_html",
+      "decision": "raw_html",
+      "status": "confirmed"
+    },
+    {
+      "id": "jetpack_module:photon",
+      "kind": "jetpack_module",
+      "name": "photon",
+      "count": 1,
+      "allowed": [],
+      "proposed": "drop",
+      "decision": "drop",
+      "status": "confirmed"
+    },
+    {
+      "id": "jetpack_module:sharedaddy",
+      "kind": "jetpack_module",
+      "name": "sharedaddy",
+      "count": 1,
+      "allowed": [],
+      "proposed": "builtin",
+      "decision": "builtin",
+      "status": "confirmed"
+    },
+    {
+      "id": "jetpack_module:stats",
+      "kind": "jetpack_module",
+      "name": "stats",
+      "count": 1,
+      "allowed": [],
+      "proposed": "drop",
+      "decision": "drop",
+      "status": "confirmed"
+    },
+    {
+      "id": "marker:nextpage",
+      "kind": "marker",
+      "name": "nextpage",
+      "count": 1,
+      "allowed": [],
+      "proposed": "merge",
+      "decision": "merge",
+      "status": "confirmed"
+    },
+    {
+      "id": "missing_media:2022/09/gone.png",
+      "kind": "missing_media",
+      "name": "2022/09/gone.png",
+      "count": 1,
+      "allowed": [],
+      "proposed": "keep_src",
+      "decision": "keep_src",
+      "status": "confirmed"
+    },
+    {
+      "id": "password_protected:all",
+      "kind": "password_protected",
+      "name": "all",
+      "count": 1,
+      "allowed": [],
+      "proposed": "private",
+      "decision": "private",
+      "status": "confirmed"
+    },
+    {
+      "id": "plugin:acme-guest-author",
+      "kind": "plugin",
+      "name": "acme-guest-author",
+      "count": 1,
+      "allowed": [],
+      "proposed": "drop",
+      "decision": "drop",
+      "status": "confirmed"
+    },
+    {
+      "id": "plugin:akismet",
+      "kind": "plugin",
+      "name": "akismet",
+      "count": 1,
+      "allowed": [],
+      "proposed": "drop",
+      "decision": "drop",
+      "status": "confirmed"
+    },
+    {
+      "id": "post_type:event",
+      "kind": "post_type",
+      "name": "event",
+      "count": 1,
+      "allowed": [],
+      "proposed": "skip",
+      "decision": "skip",
+      "status": "confirmed"
+    },
+    {
+      "id": "redirect_regex:490a357f1c",
+      "kind": "redirect_regex",
+      "name": "490a357f1c",
+      "count": 1,
+      "allowed": [],
+      "proposed": "drop",
+      "decision": "drop",
+      "status": "confirmed"
+    },
+    {
+      "id": "shortcode:1",
+      "kind": "shortcode",
+      "name": "1",
+      "count": 1,
+      "allowed": [],
+      "proposed": "keep_text",
+      "decision": "keep_text",
+      "status": "confirmed"
+    },
+    {
+      "id": "shortcode:caption",
+      "kind": "shortcode",
+      "name": "caption",
+      "count": 1,
+      "allowed": [],
+      "proposed": "convert",
+      "decision": "convert",
+      "status": "confirmed"
+    },
+    {
+      "id": "shortcode:gallery",
+      "kind": "shortcode",
+      "name": "gallery",
+      "count": 1,
+      "allowed": [],
+      "proposed": "convert",
+      "decision": "convert",
+      "status": "confirmed"
+    },
+    {
+      "id": "shortcode:pullquote",
+      "kind": "shortcode",
+      "name": "pullquote",
+      "count": 1,
+      "allowed": [],
+      "proposed": "render_php",
+      "decision": "render_php",
+      "status": "confirmed",
+      "options": {
+        "include": [
+          "/wp-code/acme/inc/shortcodes.php"
+        ]
+      }
+    },
+    {
+      "id": "shortcode:sic",
+      "kind": "shortcode",
+      "name": "sic",
+      "count": 1,
+      "allowed": [],
+      "proposed": "keep_text",
+      "decision": "keep_text",
+      "status": "confirmed"
+    },
+    {
+      "id": "shortcode:youtube",
+      "kind": "shortcode",
+      "name": "youtube",
+      "count": 1,
+      "allowed": [],
+      "proposed": "convert",
+      "decision": "convert",
+      "status": "confirmed"
+    },
+    {
+      "id": "taxonomy:post_format",
+      "kind": "taxonomy",
+      "name": "post_format",
+      "count": 1,
+      "allowed": [],
+      "proposed": "drop",
+      "decision": "drop",
+      "status": "confirmed"
+    },
+    {
+      "id": "theme_hook:the_content:acme_add_disclaimer",
+      "kind": "theme_hook",
+      "name": "the_content:acme_add_disclaimer",
+      "count": 1,
+      "allowed": [],
+      "proposed": "replicate_theme",
+      "decision": "replicate_theme",
+      "status": "confirmed"
+    },
+    {
+      "id": "theme_hook:wp_head:acme_analytics",
+      "kind": "theme_hook",
+      "name": "wp_head:acme_analytics",
+      "count": 1,
+      "allowed": [],
+      "proposed": "drop",
+      "decision": "drop",
+      "status": "confirmed"
+    },
+    {
+      "id": "yoast_variable:focuskw",
+      "kind": "yoast_variable",
+      "name": "focuskw",
+      "count": 1,
+      "allowed": [],
+      "proposed": "expand",
+      "decision": "expand",
+      "status": "confirmed"
+    }
+  ]
+}

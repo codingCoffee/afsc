@@ -1,0 +1,11 @@
+# Generated per run. They can hold site data and must never be committed.
+/work/
+/baseline/
+/bundle/
+/themes/
+/.fixture-run/
+/reports/*
+!/reports/issues-for-afsc.md
+/afsc-wp.json
+/decisions.json
+/afsc-wp
