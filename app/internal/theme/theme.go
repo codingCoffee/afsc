@@ -80,8 +80,9 @@ type state struct {
 	hasNode  map[string]bool
 	assets   map[string]string // path under assets/ -> content hash
 	strings  map[string]string
-	scripts  []string // CSP hashes of the inline scripts in templates
-	missing  []string // plg_ funcs the templates name that no plugin provides; stubbed to return nil
+	scripts  []string       // CSP hashes of the inline scripts in templates
+	missing  []string       // plg_ funcs the templates name that no plugin provides; stubbed to return nil
+	data     map[string]any // data/*.json, read with theme_data
 }
 
 var defaultStrings = map[string]string{
@@ -172,6 +173,9 @@ func (t *Theme) build() (*state, error) {
 	st := &state{manifest: m, pages: map[string]*template.Template{}, hasNode: map[string]bool{}, strings: maps.Clone(defaultStrings)}
 	maps.Copy(st.strings, m.Strings)
 	if st.assets, err = t.hashAssets(); err != nil {
+		return nil, err
+	}
+	if st.data, err = loadData(t.dir); err != nil {
 		return nil, err
 	}
 	for _, a := range m.Assets {

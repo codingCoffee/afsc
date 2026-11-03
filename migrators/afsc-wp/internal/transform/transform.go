@@ -146,12 +146,20 @@ func Run(ctx context.Context, o Options) (*Output, error) {
 	if len(s.settings.Problems) > 0 {
 		return nil, fmt.Errorf("settings need a decision or config change:\n  %s", strings.Join(s.settings.Problems, "\n  "))
 	}
+	if pp := s.cfg.Site.Permalinks.PostPattern; pp != "" {
+		s.settings.All.Permalinks.PostPattern = pp
+		s.settings.Notes = append(s.settings.Notes, fmt.Sprintf("post_pattern set to %q by config; posts whose URL changes get a 301", pp))
+	}
+	if cb := s.cfg.Site.Permalinks.CategoryBase; cb != "" {
+		s.settings.All.Permalinks.CategoryBase = cb
+		s.settings.Notes = append(s.settings.Notes, fmt.Sprintf("category_base set to %q by config; category archives whose URL changes get a 301", cb))
+	}
 	s.rep.SettingsNotes = s.settings.Notes
 	if err := s.paths(); err != nil {
 		return nil, err
 	}
 	s.applyTypeDefaults(out.Terms, out.Authors)
-	s.rw = &links.Rewriter{Hosts: s.hosts, Resolve: s.resolveQuery, PathMap: s.pathMap}
+	s.rw = &links.Rewriter{Hosts: s.hosts, Resolve: s.resolveQuery, PathMap: s.pathMap, HomePath: s.cfg.HomePath(), Origin: s.cfg.Origin()}
 
 	filtered, err := s.filter(ctx)
 	if err != nil {
@@ -216,14 +224,18 @@ func (s *state) setup() error {
 	} else {
 		s.rep.note("no theme_dir configured: every content class is dropped (run theme-scaffold and set theme_dir)")
 	}
-	s.wp = &permalink.WP{Structure: s.ds.OptionString("permalink_structure"), CategoryBase: s.ds.OptionString("category_base"), TagBase: s.ds.OptionString("tag_base")}
+	s.wp = &permalink.WP{Structure: s.ds.OptionString("permalink_structure"), CategoryBase: s.ds.OptionString("category_base"), TagBase: s.ds.OptionString("tag_base"),
+		TypeStructures: map[string]string{}, TaxonomyBases: s.cfg.Site.TaxonomyBases}
+	for t, pt := range s.cfg.Site.PostTypes {
+		s.wp.TypeStructures[t] = pt.WPPath
+	}
 	s.rep.Secrets = s.ds.Stats.SecretOptions
 	s.rep.Fixes = len(s.ds.Fixes)
 	return nil
 }
 
 func (s *state) mediaOptions() mediaidx.Options {
-	o := mediaidx.Options{Source: s.cfg.Source, UploadsPath: s.cfg.UploadsURLPath, Loc: s.loc}
+	o := mediaidx.Options{Source: s.cfg.Source, UploadsPath: s.cfg.UploadsURLPath, HomePath: s.cfg.HomePath(), Loc: s.loc}
 	for h := range s.hosts {
 		o.SiteHosts = append(o.SiteHosts, h)
 	}

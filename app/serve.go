@@ -98,10 +98,12 @@ func serve(ctx context.Context, cmd *cli.Command) error {
 	}
 	defer pool.Close()
 
-	baseURL, err := publicBaseURL()
+	baseURL, basePath, err := publicURLs()
 	if err != nil {
 		return err
 	}
+	// siteURL is where the public site lives: the origin, plus the base path when it has one.
+	siteURL := baseURL + basePath
 	themeDir := os.Getenv("AFSC_THEME_DIR")
 	if themeDir == "" {
 		return errors.New("AFSC_THEME_DIR is not set")
@@ -133,7 +135,7 @@ func serve(ctx context.Context, cmd *cli.Command) error {
 	if err := requireMigrations(ctx, pool, sets); err != nil {
 		return err
 	}
-	pub, err := site.New(ctx, site.Config{Pool: pool, BaseURL: baseURL, ThemeDir: themeDir, Dev: dev, Logf: log.Printf,
+	pub, err := site.New(ctx, site.Config{Pool: pool, BaseURL: siteURL, ThemeDir: themeDir, Dev: dev, Logf: log.Printf,
 		Storage: store, Imgproxy: imgproxy.New(ipcfg), CacheBytes: int64(cacheMB) << 20, PreviewKey: previewKey,
 		CommentSigner: commentSigner, Plugins: rt})
 	if err != nil {
@@ -238,7 +240,7 @@ func serve(ctx context.Context, cmd *cli.Command) error {
 	e.GET(plugins.PublicPrefix+"*", plg)
 	e.HEAD(plugins.PublicPrefix+"*", plg)
 	e.POST(plugins.PublicPrefix+"*", plg)
-	e.POST(site.CommentsPath, postComment(comments.New(pool, pub, commentSigner, log.Printf), pub, baseURL),
+	e.POST(site.CommentsPath, postComment(comments.New(pool, pub, commentSigner, log.Printf), pub, siteURL),
 		clientIPMiddleware(trusted))
 
 	auth := newAuthHandler(pool, authConfig{
@@ -249,23 +251,13 @@ func serve(ctx context.Context, cmd *cli.Command) error {
 		strictPasswords: !dev,
 		baseURL:         baseURL,
 	})
-	mountAdmin(e, auth, &adminDeps{pool: pool, site: pub, storage: store, baseURL: baseURL, themeDir: themeDir, dev: dev,
+	mountAdmin(e, auth, &adminDeps{pool: pool, site: pub, storage: store, baseURL: siteURL, themeDir: themeDir, dev: dev,
 		plugins: rt},
 		clientIPMiddleware(trusted), adminHeaders(apiCSP))
 
-	return listen(ctx, addr, withRequestLog(e))
+	return listen(ctx, addr, withRequestLog(withBasePath(e, basePath)))
 }
 
-// publicBaseURL reads AFSC_PUBLIC_BASE_URL, the origin used for absolute URLs. The Host header is never trusted.
-func publicBaseURL() (string, error) {
-	raw := os.Getenv("AFSC_PUBLIC_BASE_URL")
-	u, err := url.Parse(raw)
-	if raw == "" || err != nil || (u.Scheme != "https" && u.Scheme != "http") || u.Host == "" ||
-		(u.Path != "" && u.Path != "/") || u.RawQuery != "" || u.Fragment != "" {
-		return "", errors.New("AFSC_PUBLIC_BASE_URL must be an http(s) origin such as https://blog.example.com")
-	}
-	return u.Scheme + "://" + u.Host, nil
-}
 
 // spaHandler serves the generated Nuxt site under /admin, falling back to index.html for client-side routes.
 func spaHandler(fsys fs.FS) http.Handler {

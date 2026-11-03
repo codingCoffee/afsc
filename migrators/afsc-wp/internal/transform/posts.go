@@ -147,7 +147,7 @@ func (s *state) wpPostPath(p *extract.Post, slug string, local time.Time) string
 			nicename = u.Nicename
 		}
 	}
-	return s.wp.Post(permalink.WPPost{ID: p.ID, Slug: slug, Local: local, Category: s.termRawPath(s.primary[p.ID]), Author: nicename})
+	return s.wp.Post(permalink.WPPost{ID: p.ID, Slug: slug, Local: local, Category: s.termRawPath(s.primary[p.ID]), Author: nicename, Type: p.Type})
 }
 
 func decodePath(p string) string {
@@ -537,6 +537,11 @@ func (s *state) postRecord(p *extract.Post, key string, content json.RawMessage,
 		LegacyKey: key, Type: s.postType(p), Status: mapStatus(p), Slug: s.postSlug(p.ID), Title: p.Title,
 		Excerpt: plainExcerpt(p.Excerpt), Content: content, CreatedAt: &created, MenuOrder: p.MenuOrder,
 		CommentStatus: "open", Sticky: sticky[p.ID], Authors: s.postAuthors(p), Template: s.templateName(p),
+	}
+	if mk := s.cfg.Site.PostTypes[p.Type].MenuOrderMeta; mk != "" {
+		if v, err := strconv.ParseFloat(strings.TrimSpace(p.Meta.First(mk)), 64); err == nil {
+			rec.MenuOrder = int(v)
+		}
 	}
 	if !updated.IsZero() && !updated.Equal(created) {
 		rec.UpdatedAt = &updated
