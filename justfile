@@ -13,6 +13,13 @@ release bump: (_check bump)
     #!/usr/bin/env bash
     set -euo pipefail
     version=$(just _next-version {{ bump }})
+    export AFSC_GO_IMAGE_DIGEST="${AFSC_GO_IMAGE_DIGEST:-$(just _digest "golang:$(just _arg GO_VERSION)-trixie")}"
+    export AFSC_DISTROLESS_DIGEST="${AFSC_DISTROLESS_DIGEST:-$(just _digest gcr.io/distroless/static-debian12:nonroot)}"
+    export AFSC_BUN_SHA256="${AFSC_BUN_SHA256:-$(just _bun-sha)}"
+    for v in AFSC_GO_IMAGE_DIGEST AFSC_DISTROLESS_DIGEST AFSC_BUN_SHA256; do
+      [[ -n "${!v}" ]] || { echo "could not resolve $v; set it (see app/docs/ops.md)"; exit 1; }
+      echo "$v=${!v}"
+    done
     echo "releasing ${version}"
     just _binaries "${version}"
     just _image "${version}"
@@ -25,9 +32,6 @@ _check bump:
     set -euo pipefail
     [[ "{{ bump }}" =~ ^(patch|minor|major)$ ]] || { echo "usage: just release {patch|minor|major}"; exit 1; }
     : "${GITHUB_TOKEN:?GITHUB_TOKEN must be set}"
-    for v in AFSC_GO_IMAGE_DIGEST AFSC_DISTROLESS_DIGEST AFSC_BUN_SHA256; do
-      [[ -n "${!v:-}" ]] || { echo "$v must be set (see app/docs/ops.md)"; exit 1; }
-    done
     [[ "$(git rev-parse --abbrev-ref HEAD)" == "main" ]] || { echo "release from main"; exit 1; }
     [[ -z "$(git status --porcelain --untracked-files=no)" ]] || { echo "working tree has uncommitted changes"; exit 1; }
     git fetch --tags origin
@@ -45,6 +49,19 @@ _next-version bump:
       patch) patch=$((patch + 1)) ;;
     esac
     echo "v${major}.${minor}.${patch}"
+
+_arg name:
+    @sed -n 's/^ARG {{ name }}=//p' app/Dockerfile
+
+_digest ref:
+    @docker buildx imagetools inspect {{ ref }} | awk '/^Digest:/ {print $2; exit}'
+
+_bun-sha:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    case "$(uname -m)" in x86_64) arch=x64 ;; aarch64|arm64) arch=aarch64 ;; *) echo "unsupported arch" >&2; exit 1 ;; esac
+    curl -fsSL "https://github.com/oven-sh/bun/releases/download/bun-v$(just _arg BUN_VERSION)/SHASUMS256.txt" \
+      | awk -v f="bun-linux-${arch}.zip" '$2 == f {print $1}'
 
 _build-args version:
     @echo "--build-arg GO_IMAGE_DIGEST=$AFSC_GO_IMAGE_DIGEST --build-arg DISTROLESS_DIGEST=$AFSC_DISTROLESS_DIGEST --build-arg BUN_SHA256=$AFSC_BUN_SHA256 --build-arg VERSION={{ version }}"
