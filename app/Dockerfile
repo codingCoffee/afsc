@@ -1,3 +1,4 @@
+# check=skip=InvalidDefaultArgInFrom
 # Production image: a static afsc binary with the admin SPA embedded, on distroless (non-root, no shell).
 # Build args without defaults must be set; see docs/ops.md "Container image" for how to look them up.
 #   docker build \

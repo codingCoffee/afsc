@@ -25,7 +25,23 @@ release bump: (_check bump)
     just _image "${version}"
     git tag -a "${version}" -m "${version}"
     git push origin "${version}"
-    gh release create "${version}" --repo {{ repo }} --title "${version}" --generate-notes {{ dist }}/*.tar.gz {{ dist }}/checksums.txt
+    just publish "${version}"
+
+# Create the GitHub release for an already-pushed tag and upload the archives in dist/.
+publish version:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    : "${GITHUB_TOKEN:?GITHUB_TOKEN must be set}"
+    gh() { curl -fsS --config <(printf 'header = "Authorization: Bearer %s"\n' "$GITHUB_TOKEN") -H "Accept: application/vnd.github+json" "$@"; }
+    resp=$(gh -X POST "https://api.github.com/repos/{{ repo }}/releases" \
+      -d '{"tag_name":"{{ version }}","name":"{{ version }}","generate_release_notes":true}')
+    upload=$(grep -o '"upload_url": *"[^"]*"' <<< "$resp" | head -n1 | sed -E 's/.*"(https[^{"]*).*/\1/')
+    [[ -n "$upload" ]] || { echo "could not read upload_url from GitHub response"; exit 1; }
+    for f in {{ dist }}/*.tar.gz {{ dist }}/checksums.txt; do
+      echo "uploading $(basename "$f")"
+      gh -X POST -H "Content-Type: application/octet-stream" --data-binary @"$f" "${upload}?name=$(basename "$f")" > /dev/null
+    done
+    grep -o '"html_url": *"[^"]*"' <<< "$resp" | head -n1
 
 _check bump:
     #!/usr/bin/env bash
@@ -54,7 +70,7 @@ _arg name:
     @sed -n 's/^ARG {{ name }}=//p' app/Dockerfile
 
 _digest ref:
-    @docker buildx imagetools inspect {{ ref }} | awk '/^Digest:/ {print $2; exit}'
+    @docker buildx imagetools inspect {{ ref }} | awk '/^Digest:/ && !d {print $2; d=1}'
 
 _bun-sha:
     #!/usr/bin/env bash
