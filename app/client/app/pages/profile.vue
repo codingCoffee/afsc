@@ -5,11 +5,11 @@ import { toast } from 'vue-sonner'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { API } from '~/composables/useAuth'
 
 definePageMeta({ middleware: 'auth' })
 useHead({ title: 'Profile · AFSC' })
 
-const API = '/admin/api/v1'
 const { user, authFetch } = useAuth()
 
 const profile = reactive({

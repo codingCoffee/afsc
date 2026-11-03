@@ -11,6 +11,7 @@ import { Label } from '@/components/ui/label'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle } from '@/components/ui/sheet'
 import { Textarea } from '@/components/ui/textarea'
+import { API } from '~/composables/useAuth'
 
 const props = defineProps<{ author: Author | null }>()
 const emit = defineEmits<{ saved: [author: Author] }>()
@@ -64,7 +65,7 @@ async function submit() {
   form.social = Object.fromEntries(social.value.filter(s => s.key.trim() && s.url.trim()).map(s => [s.key.trim().toLowerCase(), s.url.trim()]))
   try {
     const a = props.author
-    const saved = await authFetch<Author>(a ? `/admin/api/v1/authors/${a.id}` : '/admin/api/v1/authors', { method: a ? 'PUT' : 'POST', body: { ...form } })
+    const saved = await authFetch<Author>(a ? `${API}/authors/${a.id}` : `${API}/authors`, { method: a ? 'PUT' : 'POST', body: { ...form } })
     emit('saved', saved)
     open.value = false
   }

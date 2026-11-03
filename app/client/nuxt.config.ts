@@ -5,7 +5,7 @@ export default defineNuxtConfig({
   modules: ['shadcn-nuxt', '@nuxtjs/color-mode'],
   ssr: false,
   app: {
-    baseURL: '/admin/',
+    baseURL: process.env.NUXT_APP_BASE_URL || '/admin/',
     head: {
       title: 'AFSC',
       meta: [{ name: 'description', content: 'AFSC. Write, save, leave.' }],

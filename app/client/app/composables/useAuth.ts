@@ -47,7 +47,8 @@ export type FetchOptions = {
   responseType?: 'json' | 'blob' | 'text'
 }
 
-export const API = '/admin/api/v1'
+// index.html carries the admin's base URL, which the server moves under AFSC_PUBLIC_BASE_URL's path
+export const API = `${(import.meta.client && window.__NUXT__?.config?.app?.baseURL) || '/admin/'}api/v1`
 const REFRESH_LEAD_MS = 30_000
 const RETRY_MS = 10_000
 

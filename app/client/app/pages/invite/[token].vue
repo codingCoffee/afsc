@@ -2,6 +2,7 @@
 import { ArrowRight } from '@lucide/vue'
 import { computed, onMounted, ref } from 'vue'
 import { Button } from '@/components/ui/button'
+import { API } from '~/composables/useAuth'
 
 definePageMeta({ layout: 'auth' })
 useHead({ title: 'Accept invite · AFSC' })
@@ -27,7 +28,7 @@ const pw = ref<{ ok: boolean }>()
 
 onMounted(async () => {
   try {
-    invite.value = await $fetch<Invite>(`/admin/api/v1/invites/${encodeURIComponent(token.value)}`)
+    invite.value = await $fetch<Invite>(`${API}/invites/${encodeURIComponent(token.value)}`)
   }
   catch (e) {
     loadError.value = statusOf(e) === 429 ? 'Too many attempts. Wait a while and try again.' : 'This invite link is invalid, used or expired. Ask an admin for a new one.'
@@ -39,7 +40,7 @@ async function submit() {
   fieldError.value = ''
   loading.value = true
   try {
-    await startSession(`/admin/api/v1/invites/${encodeURIComponent(token.value)}`, { password: password.value })
+    await startSession(`${API}/invites/${encodeURIComponent(token.value)}`, { password: password.value })
     await navigateTo('/dashboard')
   }
   catch (e) {

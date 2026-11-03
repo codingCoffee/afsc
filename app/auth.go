@@ -42,7 +42,8 @@ type authConfig struct {
 	refreshTTL      time.Duration // absolute session lifetime
 	idleTTL         time.Duration // a session unused this long ends; 0 means refreshTTL
 	strictPasswords bool
-	baseURL         string // AFSC_PUBLIC_BASE_URL: the only accepted Origin, and the base of invite links
+	baseURL         string // origin of AFSC_PUBLIC_BASE_URL: the only accepted Origin
+	basePath        string // path of AFSC_PUBLIC_BASE_URL, which the admin and invite links live under
 }
 
 type authHandler struct {

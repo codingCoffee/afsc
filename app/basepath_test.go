@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"testing/fstest"
 )
 
 func TestPublicURLs(t *testing.T) {
@@ -67,6 +68,9 @@ func TestWithBasePath(t *testing.T) {
 		switch r.URL.Path {
 		case "/old/":
 			http.Redirect(w, r, "/new/", http.StatusMovedPermanently)
+		case "/admin/api/v1/signin":
+			http.SetCookie(w, &http.Cookie{Name: "refresh_token", Value: "x", Path: "/admin/api/v1/", HttpOnly: true})
+			w.WriteHeader(http.StatusOK)
 		case "/img":
 			w.Header().Set("Content-Type", "image/png")
 			_, _ = w.Write([]byte("PNG"))
@@ -99,15 +103,32 @@ func TestWithBasePath(t *testing.T) {
 	if rec = do("/varsity"); rec.Code != 301 || rec.Header().Get("Location") != "/varsity/" {
 		t.Errorf("bare prefix: %d %q", rec.Code, rec.Header().Get("Location"))
 	}
-	for path, want := range map[string]string{"/varsity/admin": "/admin", "/varsity/admin/dashboard?x=1": "/admin/dashboard?x=1"} {
-		if rec = do(path); rec.Code != http.StatusFound || rec.Header().Get("Location") != want {
+	if rec = do("/varsity/admin/dashboard"); seen != "/admin/dashboard" {
+		t.Errorf("admin under prefix: seen %q", seen)
+	}
+	for path, want := range map[string]string{"/admin": "/varsity/admin", "/admin/dashboard?x=1": "/varsity/admin/dashboard?x=1"} {
+		if rec = do(path); rec.Code != http.StatusTemporaryRedirect || rec.Header().Get("Location") != want {
 			t.Errorf("%s: %d %q, want redirect to %q", path, rec.Code, rec.Header().Get("Location"), want)
 		}
 	}
-	if rec = do("/varsity/administrator/"); seen != "/administrator/" {
-		t.Errorf("only /admin itself redirects: seen %q", seen)
+	if rec = do("/varsity/admin/api/v1/signin"); !strings.Contains(rec.Header().Get("Set-Cookie"), "; Path=/varsity/admin/api/v1/;") {
+		t.Errorf("cookie path not prefixed: %q", rec.Header().Get("Set-Cookie"))
 	}
-	if rec = do("/admin/x"); seen != "/admin/x" || !strings.Contains(rec.Body.String(), `href="/next/"`) {
+	if rec = do("/healthz"); seen != "/healthz" || !strings.Contains(rec.Body.String(), `href="/next/"`) {
 		t.Errorf("outside prefix must pass through: seen %q body %q", seen, rec.Body.String())
+	}
+}
+
+func TestAdminIndex(t *testing.T) {
+	fsys := fstest.MapFS{"index.html": {Data: []byte(`<script type="module" src="/admin/_nuxt/e.js"></script>` +
+		`<script>window.__NUXT__.config={app:{baseURL:"/admin/",buildAssetsDir:"/_nuxt/"}}</script>`)}}
+	b, err := adminIndex(fsys, "/varsity")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{`src="/varsity/admin/_nuxt/e.js"`, `baseURL:"/varsity/admin/"`, `buildAssetsDir:"/_nuxt/"`} {
+		if !strings.Contains(string(b), want) {
+			t.Errorf("missing %s in %s", want, b)
+		}
 	}
 }

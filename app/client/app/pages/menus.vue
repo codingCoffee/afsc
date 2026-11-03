@@ -11,6 +11,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select'
+import { API } from '~/composables/useAuth'
 
 definePageMeta({ middleware: ['auth', 'cap'], cap: 'content.manage' })
 useHead({ title: 'Menus · AFSC' })
@@ -29,7 +30,6 @@ interface Node {
   children: Node[]
 }
 
-const API = '/admin/api/v1'
 const MAX_DEPTH = 5
 const { authFetch } = useAuth()
 const menus = ref<Menu[]>([])

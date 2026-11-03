@@ -1,5 +1,6 @@
 <script lang="ts">
 import type { MediaItem } from '@/types/api'
+import { API } from '~/composables/useAuth'
 
 export interface UploadResult { status: number, data: Record<string, unknown> }
 
@@ -65,7 +66,7 @@ async function upload(file: File) {
   jobs.value.unshift(job)
   const live = () => jobs.value.find(j => j.id === job.id)!
   try {
-    const res = await uploadWithAuth('/admin/api/v1/media', 'POST', file, (pct) => {
+    const res = await uploadWithAuth(`${API}/media`, 'POST', file, (pct) => {
       live().pct = pct
     })
     if (res.status === 200 || res.status === 201) {

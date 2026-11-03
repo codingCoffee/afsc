@@ -7,7 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"io/fs"
 	"mime"
 	"net"
 	"net/http"
@@ -153,15 +152,11 @@ func adminHeaders(csp string) echo.MiddlewareFunc {
 
 const apiCSP = "default-src 'none'; frame-ancestors 'none'"
 
-// adminCSP is the SPA's policy. Inline scripts in the generated index.html are allowed by hash, so no
+// adminCSP is the SPA's policy. Inline scripts in the served index.html are allowed by hash, so no
 // 'unsafe-inline' is needed for scripts. Styles allow inline because the UI library positions popovers with
 // style attributes.
-func adminCSP(fsys fs.FS) (string, error) {
-	b, err := fs.ReadFile(fsys, "index.html")
-	if err != nil {
-		return "", err
-	}
-	hashes, err := inlineScriptHashes(b)
+func adminCSP(index []byte) (string, error) {
+	hashes, err := inlineScriptHashes(index)
 	if err != nil {
 		return "", err
 	}

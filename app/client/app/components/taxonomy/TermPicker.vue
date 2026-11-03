@@ -2,13 +2,14 @@
 import type { Page } from '@/composables/useAuth'
 import type { Term } from '@/types/api'
 import SearchPicker from '@/components/taxonomy/SearchPicker.vue'
+import { API } from '~/composables/useAuth'
 
 const props = defineProps<{ taxonomy?: 'category' | 'tag', exclude?: number[], placeholder?: string }>()
 const emit = defineEmits<{ pick: [term: Term] }>()
 const { authFetch } = useAuth()
 
 async function search(q: string) {
-  const res = await authFetch<Page<Term>>('/admin/api/v1/terms', { query: { taxonomy: props.taxonomy, q, page_size: 30 } })
+  const res = await authFetch<Page<Term>>(`${API}/terms`, { query: { taxonomy: props.taxonomy, q, page_size: 30 } })
   return res.items.filter(t => !props.exclude?.includes(t.id))
 }
 </script>

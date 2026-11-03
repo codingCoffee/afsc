@@ -16,11 +16,11 @@ import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select'
 import { Switch } from '@/components/ui/switch'
 import { Table, TableBody, TableCell, TableEmpty, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
+import { API } from '~/composables/useAuth'
 
 definePageMeta({ middleware: ['auth', 'cap'], cap: 'posts.edit_own' })
 useHead({ title: 'Media · AFSC' })
 
-const API = '/admin/api/v1'
 const PAGE_SIZE = 40
 const { authFetch, can } = useAuth()
 const route = useRoute()

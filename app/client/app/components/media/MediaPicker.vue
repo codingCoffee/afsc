@@ -8,12 +8,12 @@ import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { API } from '~/composables/useAuth'
 
 const props = withDefaults(defineProps<{ accept?: 'image' | 'video' | 'any', multiple?: boolean }>(), { accept: 'image', multiple: false })
 const emit = defineEmits<{ select: [items: MediaItem[]] }>()
 const open = defineModel<boolean>('open', { default: false })
 
-const API = '/admin/api/v1'
 const PAGE_SIZE = 30
 const { authFetch, can } = useAuth()
 const tab = ref('library')

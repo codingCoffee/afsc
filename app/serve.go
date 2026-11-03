@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -178,7 +179,7 @@ func serve(ctx context.Context, cmd *cli.Command) error {
 		return fmt.Errorf("setup token: %w", err)
 	}
 	if setupToken != "" {
-		log.Printf("no users yet: open %s/admin/ and use this one-time setup token: %s", baseURL, setupToken)
+		log.Printf("no users yet: open %s/admin/ and use this one-time setup token: %s", siteURL, setupToken)
 	}
 
 	fsys, err := clientFS()
@@ -196,16 +197,20 @@ func serve(ctx context.Context, cmd *cli.Command) error {
 	e.HEAD("/readyz", ready)
 
 	if fsys != nil {
-		csp, err := adminCSP(fsys)
+		index, err := adminIndex(fsys, basePath)
+		if err != nil {
+			return err
+		}
+		csp, err := adminCSP(index)
 		if err != nil {
 			return fmt.Errorf("admin CSP: %w", err)
 		}
-		h := echo.WrapHandler(spaHandler(fsys))
+		h := echo.WrapHandler(spaHandler(fsys, index))
 		e.GET("/admin", h, adminHeaders(csp))
 		e.GET("/admin/*", h, adminHeaders(csp))
 	} else {
 		if dev {
-			nuxt, err := startNuxtDev()
+			nuxt, err := startNuxtDev(basePath)
 			if err != nil {
 				return err
 			}
@@ -224,8 +229,9 @@ func serve(ctx context.Context, cmd *cli.Command) error {
 				if !isAdmin || strings.HasPrefix(p, "/admin/api/") {
 					return true
 				}
-				// Vite rejects unknown Host headers, so Nuxt always sees its own address.
+				// Vite rejects unknown Host headers, so Nuxt always sees its own address and its own base path.
 				c.Request().Host = target.Host
+				c.Request().URL.Path = basePath + p
 				return false
 			},
 		}))
@@ -250,32 +256,44 @@ func serve(ctx context.Context, cmd *cli.Command) error {
 		idleTTL:         time.Duration(idleHours) * time.Hour,
 		strictPasswords: !dev,
 		baseURL:         baseURL,
+		basePath:        basePath,
 	})
 	mountAdmin(e, auth, &adminDeps{pool: pool, site: pub, storage: store, baseURL: siteURL, themeDir: themeDir, dev: dev,
 		plugins: rt},
 		clientIPMiddleware(trusted), adminHeaders(apiCSP))
 
-	return listen(ctx, addr, withRequestLog(withBasePath(e, basePath)))
+	return listen(ctx, addr, withBasePath(withRequestLog(e), basePath))
 }
 
 
-// spaHandler serves the generated Nuxt site under /admin, falling back to index.html for client-side routes.
-func spaHandler(fsys fs.FS) http.Handler {
+// adminIndex is the generated index.html, which Nuxt builds for /admin/, moved under the base path.
+func adminIndex(fsys fs.FS, basePath string) ([]byte, error) {
+	b, err := fs.ReadFile(fsys, "index.html")
+	if err != nil {
+		return nil, err
+	}
+	return bytes.ReplaceAll(b, []byte(`"/admin/`), []byte(`"`+basePath+`/admin/`)), nil
+}
+
+// spaHandler serves the generated Nuxt site under /admin, falling back to index for client-side routes.
+func spaHandler(fsys fs.FS, index []byte) http.Handler {
 	files := http.FileServerFS(fsys)
 	return http.StripPrefix("/admin", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		p := strings.Trim(r.URL.Path, "/")
-		if p != "" {
-			if _, err := fs.Stat(fsys, p); err != nil {
-				r.URL.Path = "/"
+		if p != "" && p != "index.html" {
+			if st, err := fs.Stat(fsys, p); err == nil && !st.IsDir() {
+				files.ServeHTTP(w, r)
+				return
 			}
 		}
-		files.ServeHTTP(w, r)
+		http.ServeContent(w, r, "index.html", time.Time{}, bytes.NewReader(index))
 	}))
 }
 
-func startNuxtDev() (*exec.Cmd, error) {
+func startNuxtDev(basePath string) (*exec.Cmd, error) {
 	c := exec.Command("bun", "run", "dev")
 	c.Dir = "client"
+	c.Env = append(os.Environ(), "NUXT_APP_BASE_URL="+basePath+"/admin/")
 	c.Stdout = os.Stdout
 	c.Stderr = os.Stderr
 	// own process group so the whole bun -> nuxt tree can be killed together

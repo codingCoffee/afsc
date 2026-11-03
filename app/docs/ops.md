@@ -60,7 +60,7 @@ Configuration is env only. Secrets come from a secret manager, never from git or
 |---|---|---|---|
 | `AFSC_DATABASE_URL` | all | — | Postgres URL. Use `sslmode=verify-full` outside a private network. A direct or session-pooled connection (see LISTEN below). |
 | `AFSC_JWT_SECRET` | serve, worker | — | At least 32 bytes. Signs access tokens; HKDF derives the preview, comment-form and plugin keys (webhook secrets). See [rotation](#afsc_jwt_secret). |
-| `AFSC_PUBLIC_BASE_URL` | serve, worker | — | The site's origin, for absolute URLs and the CSRF Origin check. Never taken from `Host`. |
+| `AFSC_PUBLIC_BASE_URL` | serve, worker | — | The site's origin, for absolute URLs and the CSRF Origin check, optionally with a path (`https://example.com/blog`) that the site and admin (`/blog/admin/`) are served under. Never taken from `Host`. |
 | `AFSC_THEME_DIR` | serve, worker, import | — (`/srv/afsc/themes/default` in the image) | Active theme directory. |
 | `AFSC_API_HOST`, `AFSC_API_PORT` | serve | `0.0.0.0`, `1381` | Public listener. |
 | `AFSC_METRICS_ADDR` | serve, worker | empty (off) | Private `host:port` for `/debug/vars`, for example `127.0.0.1:9090`. Must differ from the public port. |
@@ -514,7 +514,7 @@ open preview links.
   the direct peer is trusted; otherwise the peer address is used, so clients can't spoof it.
 - **CSRF.** The API accepts access tokens only in the `Authorization` header. Every non-GET request must carry
   `Origin` equal to `AFSC_PUBLIC_BASE_URL` and a JSON body. The refresh cookie is `HttpOnly`, `Secure`,
-  `SameSite=Strict` and scoped to `/admin/api/v1/`.
+  `SameSite=Strict` and scoped to `/admin/api/v1/` (under the base path, if any).
 - **Admin headers.** `/admin` responses are `Cache-Control: no-store` and `X-Robots-Tag: noindex`, and can't be
   framed. The SPA's CSP allows its own inline scripts by sha256 hash, computed from the embedded `index.html` at
   startup, and Google Fonts for the admin typeface.

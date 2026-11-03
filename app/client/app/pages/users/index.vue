@@ -13,6 +13,7 @@ import { Label } from '@/components/ui/label'
 import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select'
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet'
 import { Table, TableBody, TableCell, TableEmpty, TableHead, TableHeader, TableRow } from '@/components/ui/table'
+import { API } from '~/composables/useAuth'
 
 definePageMeta({ middleware: ['auth', 'cap'], cap: 'users.manage' })
 useHead({ title: 'Users · AFSC' })
@@ -33,7 +34,6 @@ interface AdminUser {
   sessions: number
 }
 
-const API = '/admin/api/v1'
 const PAGE_SIZE = 20
 const roles: Role[] = ['contributor', 'author', 'editor', 'admin']
 const { user: me, authFetch } = useAuth()

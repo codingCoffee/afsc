@@ -16,7 +16,7 @@ import (
 var basePathRe = regexp.MustCompile(`^(/[a-z0-9._-]+)+$`)
 
 // publicURLs reads AFSC_PUBLIC_BASE_URL: an http(s) origin, optionally with a path the public site lives under
-// ("https://example.com/varsity"). The admin and its API always stay at the origin's root.
+// ("https://example.com/varsity"). The admin and its API move under it too ("/varsity/admin/").
 func publicURLs() (origin, basePath string, err error) {
 	raw := os.Getenv("AFSC_PUBLIC_BASE_URL")
 	u, perr := url.Parse(raw)
@@ -38,9 +38,9 @@ func publicBaseURL() (string, error) {
 	return origin, err
 }
 
-// withBasePath serves the public site under prefix. Requests under it have the prefix stripped, root-relative
-// Location headers and root-relative URLs in HTML responses get it added. Requests outside it (the admin,
-// probes) pass through unchanged.
+// withBasePath serves the site and admin under prefix. Requests under it have the prefix stripped; root-relative
+// Location headers, cookie paths and URLs in HTML responses get it added. /admin outside it redirects in, and
+// other requests outside it (probes) pass through unchanged.
 func withBasePath(h http.Handler, prefix string) http.Handler {
 	if prefix == "" {
 		return h
@@ -55,17 +55,16 @@ func withBasePath(h http.Handler, prefix string) http.Handler {
 			http.Redirect(w, r, target, http.StatusMovedPermanently)
 			return
 		}
-		if !strings.HasPrefix(p, prefix+"/") {
-			h.ServeHTTP(w, r)
-			return
-		}
-		// The admin SPA is built for /admin/ and lives at the origin's root, never under the base path.
-		if rest := strings.TrimPrefix(p, prefix); rest == "/admin" || strings.HasPrefix(rest, "/admin/") {
-			target := rest
+		if p == "/admin" || strings.HasPrefix(p, "/admin/") {
+			target := prefix + p
 			if r.URL.RawQuery != "" {
 				target += "?" + r.URL.RawQuery
 			}
-			http.Redirect(w, r, target, http.StatusFound)
+			http.Redirect(w, r, target, http.StatusTemporaryRedirect)
+			return
+		}
+		if !strings.HasPrefix(p, prefix+"/") {
+			h.ServeHTTP(w, r)
 			return
 		}
 		r2 := r.Clone(r.Context())
@@ -88,6 +87,16 @@ func prefixURL(v, prefix string) string {
 	return prefix + v
 }
 
+func prefixCookiePath(ck, prefix string) string {
+	parts := strings.Split(ck, "; ")
+	for i, a := range parts {
+		if len(a) > 5 && strings.EqualFold(a[:5], "path=") {
+			parts[i] = a[:5] + prefixURL(a[5:], prefix)
+		}
+	}
+	return strings.Join(parts, "; ")
+}
+
 type prefixWriter struct {
 	http.ResponseWriter
 	prefix   string
@@ -105,6 +114,9 @@ func (pw *prefixWriter) WriteHeader(status int) {
 	hd := pw.Header()
 	if loc := hd.Get("Location"); loc != "" {
 		hd.Set("Location", prefixURL(loc, pw.prefix))
+	}
+	for i, ck := range hd.Values("Set-Cookie") {
+		hd["Set-Cookie"][i] = prefixCookiePath(ck, pw.prefix)
 	}
 	if strings.HasPrefix(hd.Get("Content-Type"), "text/html") && status != http.StatusNotModified {
 		pw.buffered = true

@@ -4,6 +4,7 @@ import { computed, reactive, ref } from 'vue'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { API } from '~/composables/useAuth'
 
 definePageMeta({ middleware: 'guest', layout: 'auth' })
 useHead({ title: 'Set up · AFSC' })
@@ -27,7 +28,7 @@ async function submit() {
   fieldErrors.value = {}
   loading.value = true
   try {
-    await startSession('/admin/api/v1/setup', { ...form })
+    await startSession(`${API}/setup`, { ...form })
     markSetupDone()
     await navigateTo('/dashboard')
   }

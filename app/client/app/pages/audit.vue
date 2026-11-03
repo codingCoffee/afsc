@@ -3,6 +3,7 @@ import type { Page } from '@/composables/useAuth'
 import { ref, watch } from 'vue'
 import { Input } from '@/components/ui/input'
 import { Table, TableBody, TableCell, TableEmpty, TableHead, TableHeader, TableRow } from '@/components/ui/table'
+import { API } from '~/composables/useAuth'
 
 definePageMeta({ middleware: ['auth', 'cap'], cap: 'audit.read' })
 useHead({ title: 'Audit log · AFSC' })
@@ -39,7 +40,7 @@ function iso(d: string) {
 async function load() {
   error.value = ''
   try {
-    data.value = await authFetch<Page<Entry>>('/admin/api/v1/audit', {
+    data.value = await authFetch<Page<Entry>>(`${API}/audit`, {
       query: { page: page.value, page_size: PAGE_SIZE, action: action.value, entity_type: entityType.value, entity_id: entityID.value, from: iso(from.value), to: iso(to.value) },
     })
   }

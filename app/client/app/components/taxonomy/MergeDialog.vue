@@ -5,6 +5,7 @@ import { toast } from 'vue-sonner'
 import TermPicker from '@/components/taxonomy/TermPicker.vue'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { API } from '~/composables/useAuth'
 
 const props = defineProps<{ source: Term | null }>()
 const emit = defineEmits<{ merged: [into: Term] }>()
@@ -28,7 +29,7 @@ async function merge() {
   saving.value = true
   error.value = ''
   try {
-    const into = await authFetch<Term>(`/admin/api/v1/terms/${props.source.id}/merge`, { method: 'POST', body: { into: target.value.id } })
+    const into = await authFetch<Term>(`${API}/terms/${props.source.id}/merge`, { method: 'POST', body: { into: target.value.id } })
     toast.success(`Merged into ${into.name}.`)
     emit('merged', into)
     open.value = false

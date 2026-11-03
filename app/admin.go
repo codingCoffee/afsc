@@ -256,7 +256,7 @@ func (h *authHandler) createUser(c *echo.Context) error {
 	if err != nil || len(items) == 0 {
 		return err
 	}
-	return c.JSON(http.StatusCreated, map[string]any{"user": items[0], "invite_url": inviteURL(h.cfg.baseURL, raw),
+	return c.JSON(http.StatusCreated, map[string]any{"user": items[0], "invite_url": inviteURL(h.cfg.baseURL+h.cfg.basePath, raw),
 		"expires_at": time.Now().Add(inviteTTL)})
 }
 
@@ -292,7 +292,7 @@ func (h *authHandler) reinviteUser(c *echo.Context) error {
 	if err := tx.Commit(ctx); err != nil {
 		return err
 	}
-	return c.JSON(http.StatusOK, map[string]any{"invite_url": inviteURL(h.cfg.baseURL, raw),
+	return c.JSON(http.StatusOK, map[string]any{"invite_url": inviteURL(h.cfg.baseURL+h.cfg.basePath, raw),
 		"expires_at": time.Now().Add(inviteTTL)})
 }
 

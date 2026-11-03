@@ -4,6 +4,7 @@ import { computed, onMounted, ref } from 'vue'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader } from '@/components/ui/card'
+import { API } from '~/composables/useAuth'
 
 interface Health {
   all: boolean
@@ -42,7 +43,7 @@ async function check() {
   loading.value = true
   const start = performance.now()
   try {
-    const res = await $fetch.raw<Health>('/admin/api/v1/ht', { ignoreResponseError: true })
+    const res = await $fetch.raw<Health>(`${API}/ht`, { ignoreResponseError: true })
     health.value = res._data ?? down
     httpStatus.value = res.status
   }
@@ -64,7 +65,7 @@ onMounted(check)
       <div class="flex flex-col gap-8 sm:flex-row sm:items-end sm:justify-between">
         <div class="animate-rise">
           <p class="font-mono text-[11px] tracking-widest text-primary uppercase">
-            § status — /admin/api/v1/ht
+            § status — {{ API }}/ht
           </p>
           <h1 class="mt-4 font-display text-4xl tracking-tight uppercase sm:text-6xl">
             Pulse.

@@ -13,12 +13,12 @@ import { Label } from '@/components/ui/label'
 import { Progress } from '@/components/ui/progress'
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet'
 import { Textarea } from '@/components/ui/textarea'
+import { API } from '~/composables/useAuth'
 
 const props = defineProps<{ mediaId: number | null }>()
 const emit = defineEmits<{ changed: [item: MediaItem], deleted: [id: number] }>()
 const open = defineModel<boolean>('open', { default: false })
 
-const API = '/admin/api/v1'
 const { authFetch, can, user } = useAuth()
 const detail = ref<MediaDetail | null>(null)
 const form = reactive({ title: '', alt: '', caption: '', description: '', focal_x: null as number | null, focal_y: null as number | null })

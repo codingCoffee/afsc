@@ -10,11 +10,11 @@ import TermDialog from '@/components/taxonomy/TermDialog.vue'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Table, TableBody, TableCell, TableEmpty, TableHead, TableHeader, TableRow } from '@/components/ui/table'
+import { API } from '~/composables/useAuth'
 
 definePageMeta({ middleware: ['auth', 'cap'], cap: 'content.manage' })
 useHead({ title: 'Tags · AFSC' })
 
-const API = '/admin/api/v1'
 const PAGE_SIZE = 50
 const { authFetch } = useAuth()
 const page = ref(1)

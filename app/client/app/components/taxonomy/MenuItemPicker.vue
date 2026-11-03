@@ -11,6 +11,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { API } from '~/composables/useAuth'
 
 // title is the target's name, shown in the tree until the menu is saved and reloaded
 const emit = defineEmits<{ add: [item: MenuItemInput, title: string] }>()
@@ -27,7 +28,7 @@ watch(open, (v) => {
 })
 
 async function searchPosts(q: string) {
-  return (await authFetch<Page<PostListItem>>('/admin/api/v1/posts', { query: { q, type: postType.value, page_size: 20 } })).items
+  return (await authFetch<Page<PostListItem>>(`${API}/posts`, { query: { q, type: postType.value, page_size: 20 } })).items
 }
 
 function add(kind: MenuItemInput['kind'], label: string, target: number | null, url: string | null) {

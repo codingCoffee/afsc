@@ -7,6 +7,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select'
 import { Textarea } from '@/components/ui/textarea'
+import { API } from '~/composables/useAuth'
 
 // term is null when creating; categories lists parent options (categories only)
 const props = defineProps<{ taxonomy: 'category' | 'tag', term: Term | null, categories?: { term: Term, depth: number }[] }>()
@@ -51,7 +52,7 @@ async function submit() {
   errors.value = {}
   form.parent_id = parent.value ? Number(parent.value) : null
   try {
-    const url = props.term ? `/admin/api/v1/terms/${props.term.id}` : '/admin/api/v1/terms'
+    const url = props.term ? `${API}/terms/${props.term.id}` : `${API}/terms`
     const saved = await authFetch<Term>(url, { method: props.term ? 'PUT' : 'POST', body: { ...form } })
     emit('saved', saved)
     open.value = false

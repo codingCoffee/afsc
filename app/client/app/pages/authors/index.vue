@@ -12,11 +12,11 @@ import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Table, TableBody, TableCell, TableEmpty, TableHead, TableHeader, TableRow } from '@/components/ui/table'
+import { API } from '~/composables/useAuth'
 
 definePageMeta({ middleware: ['auth', 'cap'], cap: 'content.manage' })
 useHead({ title: 'Authors · AFSC' })
 
-const API = '/admin/api/v1'
 const PAGE_SIZE = 30
 const { authFetch } = useAuth()
 const page = ref(1)
