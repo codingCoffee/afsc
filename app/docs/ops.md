@@ -45,9 +45,10 @@ docker run --rm --read-only --cap-drop ALL --security-opt no-new-privileges:true
   a writable volume.
 - **Processes.** `afsc serve` (site, admin, API, and jobs unless `--no-worker`) and `afsc worker` (jobs and the
   scheduler only). Run `afsc migrate up` as a one-off job before rolling out a release (see [Migrations](#migrations)).
-- **Compose.** `docker-compose.yml` has an `afsc` service in the `prod` profile that builds this image and runs it
-  read-only: `docker compose --profile prod up afsc` (port 1382) after exporting `AFSC_GO_IMAGE_DIGEST`,
-  `AFSC_DISTROLESS_DIGEST` and `AFSC_BUN_SHA256`. The default `app` service stays the dev setup.
+- **Compose.** `docker-compose.prod.yml` runs the published `codingcoffee/afsc` image (`AFSC_VERSION` picks the tag,
+  default `latest`) read-only with Postgres, RustFS and imgproxy, migrating on start (`serve --migrate`):
+  `docker compose -f docker-compose.prod.yml up -d`. It bind-mounts `app/themes/default` as the sample theme
+  `/srv/afsc/themes/sample`; mount your own theme directory the same way. `docker-compose.yml` stays the dev setup.
 - **Dockerfile.dev** installs bun with `curl … | bash`. It's for local development only; don't base a production
   image on it.
 

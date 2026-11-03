@@ -1,0 +1,88 @@
+# Production stack on the published image: `docker compose -f docker-compose.prod.yml up -d`.
+# Uses the same env files as docker-compose.yml (app/.env, .postgres.env, .rustfs.env, .imgproxy.env).
+name: afsc-prod
+
+services:
+  afsc:
+    image: codingcoffee/afsc:${AFSC_VERSION:-latest}
+    command: ["serve", "--migrate"]
+    restart: unless-stopped
+    read_only: true
+    security_opt:
+      - "no-new-privileges:true"
+    cap_drop:
+      - ALL
+    # Localhost only: put a TLS-terminating reverse proxy in front and list it in AFSC_TRUSTED_PROXIES.
+    ports:
+      - 127.0.0.1:1381:1381
+    env_file:
+      - app/.env
+    environment:
+      AFSC_ENV: ""
+      AFSC_THEME_DIR: /srv/afsc/themes/sample
+      AFSC_METRICS_ADDR: 127.0.0.1:9090
+    volumes:
+      - ./app/themes/default:/srv/afsc/themes/sample:ro
+    depends_on:
+      rustfs:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+      imgproxy:
+        condition: service_healthy
+
+  imgproxy:
+    image: ghcr.io/imgproxy/imgproxy:v4.0.20
+    restart: unless-stopped
+    read_only: true
+    security_opt:
+      - "no-new-privileges:true"
+    tmpfs:
+      - /tmp
+    env_file:
+      - .imgproxy.env
+    depends_on:
+      rustfs:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "imgproxy", "health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  rustfs:
+    image: rustfs/rustfs:1.0.4
+    restart: unless-stopped
+    security_opt:
+      - "no-new-privileges:true"
+    env_file:
+      - .rustfs.env
+    volumes:
+      - rustfs-data:/data
+      - rustfs-logs:/logs
+    healthcheck:
+      test: ["CMD", "sh", "-c", "curl -f http://127.0.0.1:9000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  postgres:
+    image: postgres:18.6-alpine3.24
+    restart: unless-stopped
+    security_opt:
+      - "no-new-privileges:true"
+    volumes:
+      - postgres-data:/var/lib/postgresql/18/docker
+    env_file:
+      - .postgres.env
+    healthcheck:
+      test: "pg_isready -U \"$$POSTGRES_USER\" -d \"$$POSTGRES_DB\""
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  postgres-data:
+  rustfs-data:
+  rustfs-logs:
