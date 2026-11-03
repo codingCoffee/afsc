@@ -180,7 +180,8 @@ func adminCSP(index []byte) (string, error) {
 	}, "; "), nil
 }
 
-// inlineScriptHashes returns 'sha256-…' sources for every executable inline <script> in an HTML document.
+// inlineScriptHashes returns 'sha256-…' sources for every inline <script> CSP checks: executable ones and import
+// maps, which Nuxt uses to resolve #entry in lazily loaded chunks.
 func inlineScriptHashes(doc []byte) ([]string, error) {
 	z := html.NewTokenizer(bytes.NewReader(doc))
 	var out []string
@@ -205,7 +206,7 @@ func inlineScriptHashes(doc []byte) ([]string, error) {
 				case "src":
 					inScript = false
 				case "type":
-					if t := strings.ToLower(string(v)); t != "" && t != "module" && t != "text/javascript" {
+					if t := strings.ToLower(string(v)); t != "" && t != "module" && t != "text/javascript" && t != "importmap" {
 						inScript = false // data blocks such as application/json never execute
 					}
 				}

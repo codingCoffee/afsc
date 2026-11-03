@@ -42,12 +42,13 @@ func TestRealIP(t *testing.T) {
 
 func TestInlineScriptHashes(t *testing.T) {
 	doc := `<html><head><script src="/a.js"></script><script>window.__NUXT__={}</script>
-<script type="application/json" id="d">{"x":1}</script><script type="module">import "/b.js"</script></head></html>`
+<script type="application/json" id="d">{"x":1}</script><script type="module">import "/b.js"</script>
+<script type="importmap">{"imports":{"#entry":"/admin/_nuxt/e.js"}}</script></head></html>`
 	got, err := inlineScriptHashes([]byte(doc))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(got) != 2 || !strings.HasPrefix(got[0], "sha256-") {
+	if len(got) != 3 || !strings.HasPrefix(got[0], "sha256-") {
 		t.Fatalf("%v", got)
 	}
 	sum := sha256.Sum256([]byte("window.__NUXT__={}"))
