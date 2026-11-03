@@ -176,6 +176,13 @@ func (s *state) redirects(pages map[int64]int) ([]*records.Redirect, error) {
 			add(src, "exact", target, 301, "attachment")
 		}
 	}
+	// A post type's WordPress archive (/updates/ for /updates/%postname%/) moves to its category's archive.
+	for _, typ := range sortedKeys(s.typeCat) {
+		seg, _, _ := strings.Cut(strings.TrimPrefix(s.cfg.Site.PostTypes[typ].WPPath, "/"), "/")
+		if target, ok := s.termPath[s.typeCat[typ]]; ok && seg != "" && !strings.Contains(seg, "%") && target != "/"+seg+"/" {
+			add("/"+seg+"/", "exact", target, 301, "type-archive")
+		}
+	}
 	for _, old := range sortedKeys(s.pathMap) {
 		add(old, "exact", s.pathMap[old], 301, "path-change")
 	}

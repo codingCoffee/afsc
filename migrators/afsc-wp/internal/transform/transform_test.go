@@ -261,7 +261,7 @@ func TestUnconfirmedDecisionsFailClosed(t *testing.T) {
 }
 
 func TestSlugify(t *testing.T) {
-	cases := map[string]string{"Hello World!": "hello-world", "  Café — Culture ": "café-culture", "नमस्ते": "नमस-त", "": ""}
+	cases := map[string]string{"Hello World!": "hello-world", "  Café — Culture ": "café-culture", "नमस्ते": "नमस्ते", "हमारी 10-वीं सालगिरह": "हमारी-10-वीं-सालगिरह", "\u0301x": "x", "": ""}
 	for in, want := range cases {
 		if got := transform.Slugify(in); got != want {
 			t.Errorf("%q: %q want %q", in, got, want)

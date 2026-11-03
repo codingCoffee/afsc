@@ -2,6 +2,7 @@ package transform
 
 import (
 	"bytes"
+	"cmp"
 	"context"
 	"crypto/sha1"
 	"encoding/hex"
@@ -40,7 +41,13 @@ func (s *state) planPosts() error {
 		}
 		s.postKey[p.ID] = s.key("post", p.ID)
 	}
-	for _, p := range s.ds.Posts {
+	// Published posts claim their slugs first, so a draft whose slug comes from its title can't push the live
+	// post's URL to slug-<id>.
+	order := slices.Clone(s.ds.Posts)
+	slices.SortStableFunc(order, func(a, b *extract.Post) int {
+		return cmp.Compare(boolRank(!s.published(a)), boolRank(!s.published(b)))
+	})
+	for _, p := range order {
 		key, ok := s.postKey[p.ID]
 		if !ok {
 			continue
@@ -70,6 +77,13 @@ func (s *state) planPosts() error {
 		s.primary[p.ID] = s.primaryCategory(p)
 	}
 	return nil
+}
+
+func boolRank(b bool) int {
+	if b {
+		return 1
+	}
+	return 0
 }
 
 func (s *state) postSlug(id int64) string { return s.slugOf[-id] }
@@ -569,16 +583,19 @@ func (s *state) postRecord(p *extract.Post, key string, content json.RawMessage,
 			s.rep.flag(key, "missing_media", "featured image attachment "+id)
 		}
 	}
+	seen := map[string]int{}
 	for _, tt := range p.TermTaxIDs {
 		tk, ok := s.termKey[tt]
 		if !ok {
 			continue
 		}
-		pt := records.PostTerm{Term: tk}
-		if tt == s.primary[p.ID] && s.termTax[tt] == "category" {
-			pt.Primary = true
+		primary := tt == s.primary[p.ID] && s.termTax[tt] == "category"
+		if i, dup := seen[tk]; dup { // two WordPress terms merged into one
+			rec.Terms[i].Primary = rec.Terms[i].Primary || primary
+			continue
 		}
-		rec.Terms = append(rec.Terms, pt)
+		seen[tk] = len(rec.Terms)
+		rec.Terms = append(rec.Terms, records.PostTerm{Term: tk, Primary: primary})
 	}
 	if s.set.On("yoast") {
 		rec.SEO = s.postSEO(p, key)

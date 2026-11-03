@@ -46,6 +46,9 @@ type Site struct {
 type PostType struct {
 	WPPath        string `json:"wp_path"`
 	MenuOrderMeta string `json:"menu_order_meta"` // numeric post meta copied into menu_order
+	// Category (a slug) is added to every post of the type, created when missing. With a {category} post pattern
+	// it keeps type-prefixed URLs such as /updates/%postname%/ in place.
+	Category string `json:"category"`
 }
 
 type Permalinks struct {

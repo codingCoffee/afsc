@@ -1,10 +1,12 @@
 package transform
 
 import (
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
 
+	"afsc/migrators/afsc-wp/internal/extract"
 	"afsc/migrators/afsc-wp/internal/records"
 	"afsc/migrators/afsc-wp/internal/wpseo"
 )
@@ -21,6 +23,17 @@ func (s *state) taxonomyOf(tax string) string {
 	return map[string]string{"category": "category", "tag": "tag"}[s.decide("taxonomy", tax, "drop")]
 }
 
+// termSlug is the term's slug made valid for AFSC.
+func (s *state) termSlug(t *extract.Term) string {
+	if validSlug(t.Slug) {
+		return t.Slug
+	}
+	if fixed := Slugify(t.Slug); fixed != "" {
+		return fixed
+	}
+	return "term-" + strconv.FormatInt(t.TermID, 10)
+}
+
 func (s *state) terms() []*records.Term {
 	var out []*records.Term
 	usedKey := map[string]bool{}
@@ -30,7 +43,13 @@ func (s *state) terms() []*records.Term {
 		s.termByID[t.TermTaxID] = t
 		byTermID[t.TermID] = append(byTermID[t.TermID], t.TermTaxID)
 	}
-	for _, t := range s.ds.Terms {
+	// WordPress's own taxonomies go first: a custom taxonomy mapped onto category or tag merges into an existing
+	// term with the same slug instead of colliding with it.
+	native := func(t *extract.Term) bool { return t.Taxonomy == "category" || t.Taxonomy == "post_tag" }
+	order := slices.Clone(s.ds.Terms)
+	slices.SortStableFunc(order, func(a, b *extract.Term) int { return boolRank(!native(a)) - boolRank(!native(b)) })
+	merged := map[string]string{} // taxonomy + slug of a top-level term → its key
+	for _, t := range order {
 		tax := s.taxonomyOf(t.Taxonomy)
 		if tax == "" {
 			if t.Taxonomy != "nav_menu" {
@@ -39,6 +58,13 @@ func (s *state) terms() []*records.Term {
 			continue
 		}
 		key := s.key("term", t.TermID)
+		if !native(t) && t.Parent == 0 {
+			if into, ok := merged[tax+"\x00"+s.termSlug(t)]; ok {
+				s.termKey[t.TermTaxID], s.termTax[t.TermTaxID], s.slugOf[t.TermTaxID] = into, tax, s.termSlug(t)
+				s.rep.note("%s (%s) merged into %s, the %s with the same slug", key, t.Taxonomy, into, tax)
+				continue
+			}
+		}
 		if usedKey[key] {
 			key += "-" + t.Taxonomy
 			s.rep.note("term %d is shared by several taxonomies; %s keyed %s", t.TermID, t.Taxonomy, key)
@@ -46,14 +72,12 @@ func (s *state) terms() []*records.Term {
 		usedKey[key] = true
 		s.termKey[t.TermTaxID] = key
 		s.termTax[t.TermTaxID] = tax
-		slug := t.Slug
-		if !validSlug(slug) {
-			fixed := Slugify(slug)
-			if fixed == "" {
-				fixed = "term-" + strconv.FormatInt(t.TermID, 10)
-			}
-			s.rep.note("%s: slug %q changed to %q", key, slug, fixed)
-			slug = fixed
+		slug := s.termSlug(t)
+		if slug != t.Slug {
+			s.rep.note("%s: slug %q changed to %q", key, t.Slug, slug)
+		}
+		if t.Parent == 0 {
+			merged[tax+"\x00"+slug] = key
 		}
 		s.slugOf[t.TermTaxID] = slug
 		rec := &records.Term{LegacyKey: key, Taxonomy: tax, Slug: slug, Name: strings.TrimSpace(t.Name), Description: t.Description}

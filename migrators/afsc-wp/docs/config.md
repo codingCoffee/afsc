@@ -17,6 +17,9 @@ holds the config file. `testdata/afsc-wp.fixture.json` is a complete example.
 | `site.old_hosts` | `[]` | Other domains that ever served the site. Links on them become internal; the proxy handles redirects. |
 | `site.language` | WPLANG, else `en` | BCP 47 tag for `site.language`. |
 | `site.timezone` | from options | IANA zone. Required when WordPress uses a fractional `gmt_offset`. |
+| `site.post_types.<type>` | — | Custom post types imported as posts: `wp_path` (their WordPress permalink, e.g. `/updates/%postname%/`), `menu_order_meta` (numeric meta copied into `menu_order`) and `category` (a category slug added to every post of the type, created when missing; with a `{category}` post pattern it keeps `/updates/…` URLs, and the type's archive redirects to the category). |
+| `site.taxonomy_bases` | `{}` | Archive base of custom taxonomies, e.g. `{"modules": "module"}`. A custom taxonomy mapped to `category` or `tag` merges into an existing term with the same slug. |
+| `site.permalinks` | derived | `post_pattern` and `category_base` overrides for AFSC; posts whose URL changes get a 301. |
 | `site.robots_txt_file` | — | The site's customized `robots.txt` (physical file or Yoast editor). Empty keeps AFSC's default. |
 | `site.indexnow_key` | — | The IndexNow key the site already serves, if any. |
 | `site.page_templates` | derived | `_wp_page_template` value → AFSC template name, e.g. `{"tpl/wide.php": "wide"}`. Unlisted files become their base name. |

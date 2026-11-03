@@ -105,6 +105,7 @@ type state struct {
 	slugOf     map[int64]string
 	pathRecs   []PathRec
 	reference  map[string]string
+	typeCat    map[string]int64 // post type → term_taxonomy_id of its site.post_types category
 }
 
 func (s *state) key(kind string, id int64) string {
@@ -125,7 +126,7 @@ func Run(ctx context.Context, o Options) (*Output, error) {
 		termByID: map[int64]*extract.Term{}, termTax: map[int64]string{}, postKey: map[int64]string{},
 		postPath: map[int64]string{}, wpPath: map[int64]string{}, pathMap: map[string]string{}, live: map[string]bool{},
 		primary: map[int64]int64{}, termPath: map[int64]string{}, authorPath: map[int64]string{}, slugOf: map[int64]string{},
-		reference: map[string]string{}}
+		reference: map[string]string{}, typeCat: map[string]int64{}}
 	out := &Output{}
 	if err := s.setup(); err != nil {
 		return nil, err
@@ -229,9 +230,55 @@ func (s *state) setup() error {
 	for t, pt := range s.cfg.Site.PostTypes {
 		s.wp.TypeStructures[t] = pt.WPPath
 	}
+	s.addTypeCategories()
 	s.rep.Secrets = s.ds.Stats.SecretOptions
 	s.rep.Fixes = len(s.ds.Fixes)
 	return nil
+}
+
+// addTypeCategories files every post of a type with site.post_types.<type>.category, creating the category
+// (with ids above WordPress's) when the site has none with that slug.
+func (s *state) addTypeCategories() {
+	types := make([]string, 0, len(s.cfg.Site.PostTypes))
+	for t, pt := range s.cfg.Site.PostTypes {
+		if pt.Category != "" {
+			types = append(types, t)
+		}
+	}
+	if len(types) == 0 {
+		return
+	}
+	slices.Sort(types)
+	var maxTT, maxID int64
+	bySlug := map[string]*extract.Term{}
+	for _, t := range s.ds.Terms {
+		maxTT, maxID = max(maxTT, t.TermTaxID), max(maxID, t.TermID)
+		if t.Taxonomy == "category" {
+			bySlug[t.Slug] = t
+		}
+	}
+	for _, typ := range types {
+		slug := s.cfg.Site.PostTypes[typ].Category
+		term, ok := bySlug[slug]
+		if !ok {
+			maxTT, maxID = maxTT+1, maxID+1
+			name := strings.ReplaceAll(slug, "-", " ")
+			if name != "" {
+				name = strings.ToUpper(name[:1]) + name[1:]
+			}
+			term = &extract.Term{TermTaxID: maxTT, TermID: maxID, Name: name, RawSlug: slug, Slug: slug, Taxonomy: "category"}
+			s.ds.Terms = append(s.ds.Terms, term)
+			bySlug[slug] = term
+			s.rep.note("created category %q for post type %s (site.post_types.%s.category)", slug, typ, typ)
+		}
+		s.typeCat[typ] = term.TermTaxID
+		for _, p := range s.ds.Posts {
+			if p.Type == typ && !slices.Contains(p.TermTaxIDs, term.TermTaxID) {
+				p.TermTaxIDs = append(p.TermTaxIDs, term.TermTaxID)
+				term.Count++
+			}
+		}
+	}
 }
 
 func (s *state) mediaOptions() mediaidx.Options {
@@ -319,14 +366,16 @@ func (s *state) resolveImage(id, u string) *string {
 	return nil
 }
 
-var slugRe = regexp.MustCompile(`^[\p{Ll}\p{Lo}\p{Nd}_-]{1,200}$`)
+var slugRe = regexp.MustCompile(`^[\p{Ll}\p{Lo}\p{Nd}\p{Mn}\p{Mc}_-]{1,200}$`)
 
-// Slugify makes a valid AFSC slug: lowercase letters of any script, digits, "-" and "_".
+// Slugify makes a valid AFSC slug: lowercase letters of any script with their combining marks (Devanagari
+// vowel signs), digits, "-" and "_".
 func Slugify(s string) string {
 	var b strings.Builder
 	dash := false
 	for _, r := range strings.ToLower(s) {
-		if unicode.IsLower(r) || unicode.Is(unicode.Lo, r) || unicode.IsDigit(r) || r == '_' {
+		if unicode.IsLower(r) || unicode.Is(unicode.Lo, r) || unicode.IsDigit(r) || r == '_' ||
+			(isMark(r) && b.Len() > 0 && !dash) {
 			b.WriteRune(r)
 			dash = false
 		} else if !dash && b.Len() > 0 {
@@ -335,11 +384,13 @@ func Slugify(s string) string {
 		}
 	}
 	out := strings.Trim(b.String(), "-")
-	if len(out) > 200 {
-		out = strings.TrimRight(out[:200], "-")
+	if r := []rune(out); len(r) > 200 {
+		out = strings.TrimRight(string(r[:200]), "-")
 	}
 	return out
 }
+
+func isMark(r rune) bool { return unicode.In(r, unicode.Mn, unicode.Mc) }
 
 func validSlug(s string) bool { return slugRe.MatchString(s) }
 
