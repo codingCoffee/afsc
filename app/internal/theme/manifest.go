@@ -51,12 +51,13 @@ type CSP struct {
 	Img     []string `json:"img"`
 	Font    []string `json:"font"`
 	Connect []string `json:"connect"`
+	Form    []string `json:"form"` // form-action: third-party form endpoints (newsletter signups)
 }
 
 // Directives maps each CSP directive to the theme's origins for it.
 func (c CSP) Directives() map[string][]string {
 	return map[string][]string{"script-src": c.Script, "style-src": c.Style, "frame-src": c.Frame, "img-src": c.Img,
-		"font-src": c.Font, "connect-src": c.Connect}
+		"font-src": c.Font, "connect-src": c.Connect, "form-action": c.Form}
 }
 
 // Setting is a theme option. Admins edit it under Settings → Theme; until then the default applies.

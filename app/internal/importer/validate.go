@@ -25,7 +25,7 @@ import (
 
 var (
 	sourceRe   = regexp.MustCompile(`^[a-z0-9]{1,16}$`)
-	slugRe     = regexp.MustCompile(`^[\p{Ll}\p{Lo}\p{Nd}_-]{1,200}$`)
+	slugRe     = regexp.MustCompile(`^[\p{Ll}\p{Lo}\p{Nd}\p{Mn}\p{Mc}_-]{1,200}$`)
 	shaRe      = regexp.MustCompile(`^[0-9a-f]{64}$`)
 	templateRe = regexp.MustCompile(`^[a-z0-9_-]{1,64}$`)
 	menuSlugRe = regexp.MustCompile(`^[a-z0-9_-]{1,64}$`)

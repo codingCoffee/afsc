@@ -82,11 +82,12 @@ func TestBlockDiff(t *testing.T) {
 
 func TestSlugify(t *testing.T) {
 	for in, want := range map[string]string{
-		"Hello, World!":          "hello-world",
-		"  Don't stop  ":         "dont-stop",
-		"Ünïcode Straße 2024":    "ünïcode-straße-2024",
-		"---":                    "",
-		"a/b\\c":                 "a-b-c",
+		"Hello, World!":       "hello-world",
+		"  Don't stop  ":      "dont-stop",
+		"Ünïcode Straße 2024": "ünïcode-straße-2024",
+		"---":                 "",
+		"a/b\\c":              "a-b-c",
+		"हमारी 10-वीं सालगिरह":   "हमारी-10-वीं-सालगिरह",
 		strings.Repeat("x", 300): strings.Repeat("x", 197),
 	} {
 		if got := Slugify(in); got != want {

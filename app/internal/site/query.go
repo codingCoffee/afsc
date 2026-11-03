@@ -6,6 +6,8 @@ import (
 	"slices"
 	"time"
 
+	"github.com/jackc/pgx/v5"
+
 	"afsc/internal/theme"
 )
 
@@ -17,30 +19,74 @@ const queryTimeout = 5 * time.Second
 var _ theme.Querier = (*Site)(nil)
 
 const sqlTermPostList = `
-SELECT ` + postCols + `,
-  (SELECT count(*) FROM comments c WHERE c.post_id = p.id AND c.status = 'approved')
+SELECT ` + postCols + `
 FROM posts p
 WHERE p.type = 'post' AND p.status = 'published' AND p.published_at <= now()
   AND EXISTS (SELECT 1 FROM post_terms pt WHERE pt.post_id = p.id AND pt.term_id = $1)
 ORDER BY p.menu_order, p.published_at, p.id
 LIMIT $2`
 
+const sqlRecentPostList = `
+SELECT ` + postCols + `
+FROM posts p
+WHERE p.type = 'post' AND p.status = 'published' AND p.published_at <= now()
+  AND ($1 = 0 OR EXISTS (SELECT 1 FROM post_terms pt WHERE pt.post_id = p.id AND pt.term_id = $1))
+ORDER BY p.published_at DESC, p.id DESC
+LIMIT $2`
+
 func (st *Site) TermPosts(termID int64, limit int) ([]*theme.Post, error) {
+	return st.queryPosts(sqlTermPostList, termID, limit)
+}
+
+func (st *Site) RecentPosts(termID int64, limit int) ([]*theme.Post, error) {
+	return st.queryPosts(sqlRecentPostList, termID, limit)
+}
+
+const sqlTopTerms = `
+SELECT pt.term_id
+FROM post_terms pt
+JOIN terms t ON t.id = pt.term_id
+JOIN posts p ON p.id = pt.post_id
+WHERE t.taxonomy = $1 AND p.type = 'post' AND p.status = 'published' AND p.published_at <= now()
+GROUP BY pt.term_id
+ORDER BY count(*) DESC, pt.term_id
+LIMIT $2`
+
+func (st *Site) TopTerms(taxonomy string, limit int) ([]*theme.Term, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), queryTimeout)
 	defer cancel()
-	rows, err := st.db.Query(ctx, sqlTermPostList, termID, limit)
+	rows, err := st.db.Query(ctx, sqlTopTerms, taxonomy, limit)
+	if err != nil {
+		return nil, err
+	}
+	ids, err := pgx.CollectRows(rows, pgx.RowTo[int64])
+	if err != nil {
+		return nil, err
+	}
+	snap := st.snap.Load()
+	out := make([]*theme.Term, 0, len(ids))
+	for _, id := range ids {
+		if v := snap.termView(id); v != nil {
+			out = append(out, v)
+		}
+	}
+	return out, nil
+}
+
+func (st *Site) queryPosts(query string, termID int64, limit int) ([]*theme.Post, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), queryTimeout)
+	defer cancel()
+	rows, err := st.db.Query(ctx, query, termID, limit)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 	var out []*postRow
 	for rows.Next() {
-		var n int
-		p, err := scanPost(rows, &n)
+		p, err := scanPost(rows)
 		if err != nil {
 			return nil, err
 		}
-		p.view.CommentCount = n
 		out = append(out, p)
 	}
 	if err := rows.Err(); err != nil {

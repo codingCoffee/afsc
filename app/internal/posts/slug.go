@@ -11,14 +11,15 @@ import (
 
 const maxSlug = 200
 
-// Slugify lowercases s and joins its letter and digit runs with dashes. Apostrophes vanish ("don't" → "dont").
+// Slugify lowercases s and joins its letter and digit runs (with combining marks such as Devanagari vowel signs)
+// with dashes. Apostrophes vanish ("don't" → "dont").
 func Slugify(s string) string {
 	var b strings.Builder
 	dash := false
 	for _, r := range strings.ToLower(s) {
 		switch {
 		case r == '\'' || r == '’':
-		case unicode.IsLetter(r) || unicode.IsDigit(r):
+		case unicode.IsLetter(r) || unicode.IsDigit(r) || (unicode.In(r, unicode.Mn, unicode.Mc) && b.Len() > 0 && !dash):
 			if b.Len()+4 > maxSlug {
 				return strings.TrimRight(b.String(), "-")
 			}

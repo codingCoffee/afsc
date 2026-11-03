@@ -84,7 +84,7 @@ func Slugify(s string) string {
 	dash := false
 	for _, r := range strings.ToLower(s) {
 		switch {
-		case unicode.IsLetter(r) || unicode.IsDigit(r) || r == '_':
+		case unicode.IsLetter(r) || unicode.IsDigit(r) || r == '_' || (unicode.In(r, unicode.Mn, unicode.Mc) && b.Len() > 0 && !dash):
 			b.WriteRune(r)
 			dash = false
 		case b.Len() > 0 && !dash:

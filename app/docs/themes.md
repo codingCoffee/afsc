@@ -36,7 +36,7 @@ Unknown fields are errors.
   "menu_locations": ["primary", "footer"],
   "content": {"allowed_classes": ["lead", "callout"]},
   "assets": [{"path": "style.css"}, {"path": "app.js", "defer": true}],
-  "csp": {"script": [], "style": [], "frame": [], "img": [], "font": [], "connect": []},
+  "csp": {"script": [], "style": [], "frame": [], "img": [], "font": [], "connect": [], "form": []},
   "settings": {"show_reading_time": {"type": "bool", "label": "Show reading time", "default": true},
                "layout": {"type": "select", "label": "Layout", "default": "wide", "options": ["wide", "narrow"]}},
   "strings": {"read_more": "Continue reading"},
@@ -53,7 +53,7 @@ Unknown fields are errors.
 | `menu_locations` | Locations menus can be assigned to; `menu` only accepts these. |
 | `content.allowed_classes` | Classes content may use (`classes` attributes). Unknown classes are rejected on save and dropped on import. |
 | `assets` | Files under `assets/` the page head includes (`head`, M2). Each must exist. |
-| `csp` | Extra origins per directive (`script`, `style`, `frame`, `img`, `font`, `connect`) for the public Content Security Policy. Each must be an `https://` origin, optionally with a leading `*.`. See [Content Security Policy](#content-security-policy). |
+| `csp` | Extra origins per directive (`script`, `style`, `frame`, `img`, `font`, `connect`, and `form` for `form-action`) for the public Content Security Policy. Each must be an `https://` origin, optionally with a leading `*.`. See [Content Security Policy](#content-security-policy). |
 | `settings` | Theme options: `type` (`bool`, `string`, `number`, `select` with `options`, or `color` as `#rrggbb`), `label` and a `default` of that type. Admins edit them under Settings → Theme; `theme_setting` returns the admin's value, else the default. |
 | `strings` | Static strings for `t`. They override the built-in defaults listed under `t`. |
 | `posts_per_page` | Per-archive overrides of the site's posts-per-page: `home` (also the posts page), `category`, `tag`, `author`, `date`, `search`. 1–100. |
@@ -492,6 +492,24 @@ undeclared size is an error.
 ```
 
 `avatar comment "size"` gives the initials SVG for a commenter. Commenters never get an image (no Gravatar).
+
+### Query funcs
+
+Templates can load content beyond the page's own data. Under `afsc theme check` they return nothing.
+
+| Func | Returns |
+|---|---|
+| `term_posts term [n]` | Published posts directly in a term, by `menu_order` then oldest first (ordered series such as chapters). |
+| `recent_posts term [n]` | The newest published posts, in `term` when it isn't `nil`. Default 10. |
+| `terms "category"` | Every term of the taxonomy, in WordPress id order. |
+| `term "category" "slug"` | One term by slug, or nil. |
+| `term_children term` | A term's direct children. |
+| `top_terms "tag" [n]` | Terms with the most published posts, most first. |
+| `recent_comments [n]` | The newest approved comments (`AuthorName Text CreatedAt PostTitle PostURL URL PostCommentCount`). |
+| `theme_data "name" [keys…]` | A value from the theme's `data/<name>.json`, nil when a key is missing. |
+
+`n` is capped at 1000. Listing posts carry `MenuOrder` and `CommentCount` (approved comments). Also available:
+`truncate s n` (rune cut), `strip_tags html` and `reverse slice`.
 
 ### Plugin funcs
 

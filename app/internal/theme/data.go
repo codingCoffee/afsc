@@ -112,7 +112,7 @@ type Post struct {
 	Template      string
 	Sticky        bool
 	MenuOrder     int
-	CommentCount  int // approved comments; set by term_posts
+	CommentCount  int // approved comments
 	CommentStatus string
 	PublishedAt   time.Time
 	UpdatedAt     time.Time

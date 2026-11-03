@@ -10,6 +10,9 @@ import (
 	"afsc/internal/theme"
 )
 
+const sqlPostCommentCounts = `
+SELECT post_id, count(*) FROM comments WHERE post_id = ANY($1) AND status = 'approved' GROUP BY post_id`
+
 type hydrateOpts struct {
 	teaser bool // set Teaser, TeaserText and HasMore (listings and feeds)
 	feed   bool // replace ContentHTML with feed-safe markup
@@ -68,6 +71,23 @@ func (st *Site) hydrate(ctx context.Context, snap *snapshot, rows []*postRow, o 
 		}
 	}
 	if err := tr.Err(); err != nil {
+		return err
+	}
+
+	cr, err := st.db.Query(ctx, sqlPostCommentCounts, ids)
+	if err != nil {
+		return err
+	}
+	for cr.Next() {
+		var postID int64
+		var n int
+		if err := cr.Scan(&postID, &n); err != nil {
+			cr.Close()
+			return err
+		}
+		byID[postID].view.CommentCount = n
+	}
+	if err := cr.Err(); err != nil {
 		return err
 	}
 

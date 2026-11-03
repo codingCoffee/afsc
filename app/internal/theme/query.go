@@ -19,6 +19,10 @@ import (
 type Querier interface {
 	// TermPosts lists published posts directly in a term (not its descendants), by menu_order then date.
 	TermPosts(termID int64, limit int) ([]*Post, error)
+	// RecentPosts lists the newest published posts, only those in termID when it isn't 0.
+	RecentPosts(termID int64, limit int) ([]*Post, error)
+	// TopTerms lists a taxonomy's terms with the most published posts, most first.
+	TopTerms(taxonomy string, limit int) ([]*Term, error)
 	// Terms lists every term of a taxonomy ("category" or "tag").
 	Terms(taxonomy string) ([]*Term, error)
 	// TermChildren lists a term's direct children.
@@ -80,15 +84,55 @@ func (t *Theme) termPosts(term any, n ...int) ([]*Post, error) {
 	return q.TermPosts(id, limitArg(n, maxQueryLimit))
 }
 
-func (t *Theme) terms(taxonomy string) ([]*Term, error) {
+// recentPosts: {{range recent_posts nil 10}} (all posts) or {{recent_posts (term "category" "news") 4}}.
+func (t *Theme) recentPosts(term any, n ...int) ([]*Post, error) {
+	id, err := termID(term)
+	q := t.querier()
+	if err != nil || q == nil {
+		return nil, err
+	}
+	return q.RecentPosts(id, limitArg(n, 10))
+}
+
+func checkTaxonomy(fn, taxonomy string) error {
 	if taxonomy != "category" && taxonomy != "tag" {
-		return nil, fmt.Errorf("terms: taxonomy must be category or tag, got %q", taxonomy)
+		return fmt.Errorf("%s: taxonomy must be category or tag, got %q", fn, taxonomy)
+	}
+	return nil
+}
+
+func (t *Theme) terms(taxonomy string) ([]*Term, error) {
+	if err := checkTaxonomy("terms", taxonomy); err != nil {
+		return nil, err
 	}
 	q := t.querier()
 	if q == nil {
 		return nil, nil
 	}
 	return q.Terms(taxonomy)
+}
+
+// topTerms: {{range top_terms "category" 5}}.
+func (t *Theme) topTerms(taxonomy string, n ...int) ([]*Term, error) {
+	if err := checkTaxonomy("top_terms", taxonomy); err != nil {
+		return nil, err
+	}
+	q := t.querier()
+	if q == nil {
+		return nil, nil
+	}
+	return q.TopTerms(taxonomy, limitArg(n, 10))
+}
+
+// term finds a term by slug: {{with term "category" "featured"}}. Missing terms give nil.
+func (t *Theme) term(taxonomy, slug string) (*Term, error) {
+	all, err := t.terms(taxonomy)
+	for _, x := range all {
+		if x.Slug == slug {
+			return x, nil
+		}
+	}
+	return nil, err
 }
 
 func (t *Theme) termChildren(term any) ([]*Term, error) {
