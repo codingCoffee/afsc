@@ -27,13 +27,18 @@ RUN bun run postinstall && bun run generate
 FROM --platform=$BUILDPLATFORM golang:${GO_VERSION}-trixie@${GO_IMAGE_DIGEST} AS build
 ARG TARGETOS
 ARG TARGETARCH
+ARG VERSION=dev
 WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download && go mod verify
 COPY . .
 COPY --from=client /src/client/.output/public ./client/.output/public
 RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} \
-  go build -trimpath -tags prod -ldflags "-s -w" -o /out/afsc .
+  go build -trimpath -tags prod -ldflags "-s -w -X main.version=${VERSION}" -o /out/afsc .
+
+# `--target binary --output type=local,dest=…` exports just the binary, for release archives.
+FROM scratch AS binary
+COPY --from=build /out/afsc /afsc
 
 FROM gcr.io/distroless/static-debian12:nonroot@${DISTROLESS_DIGEST}
 WORKDIR /srv/afsc

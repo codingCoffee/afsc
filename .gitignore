@@ -5,3 +5,5 @@ app/.env
 rustfs-data/
 rustfs-logs/
 .imgproxy.env
+dist/
+.envrc

@@ -13,6 +13,8 @@ import (
 	"github.com/urfave/cli/v3"
 )
 
+var version = "dev"
+
 func main() {
 	if err := godotenv.Load(); err != nil && !errors.Is(err, fs.ErrNotExist) {
 		log.Fatalf("failed to load .env: %v", err)
@@ -24,6 +26,7 @@ func main() {
 	cmd := &cli.Command{
 		Name:     "afsc",
 		Usage:    "afsc server and tooling",
+		Version:  version,
 		Commands: []*cli.Command{serveCmd(), migrateCmd(), importCmd(), themeCmd(), userCmd(), contentCmd(), workerCmd()},
 	}
 
